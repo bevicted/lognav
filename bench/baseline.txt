@@ -1,0 +1,315 @@
+# benchmark baseline; regenerate via 'just update-baseline'
+?   	github.com/bevicted/lognav	[no test files]
+?   	github.com/bevicted/lognav/build	[no test files]
+?   	github.com/bevicted/lognav/cmd	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/config	0.478s
+PASS
+ok  	github.com/bevicted/lognav/deps	0.343s
+PASS
+ok  	github.com/bevicted/lognav/deps/depstest	0.334s
+?   	github.com/bevicted/lognav/docs	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/icl	0.405s
+?   	github.com/bevicted/lognav/jsonutil	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/logging	0.336s
+goos: darwin
+goarch: arm64
+pkg: github.com/bevicted/lognav/snapshot
+cpu: Apple M4 Max
+BenchmarkGunzipRead_Small-14                	  138931	      7664 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  154712	      7647 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  157917	      7671 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  156165	      7592 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  157092	      7638 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  157954	      7643 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  154549	      7613 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  156412	      7714 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  155520	      7616 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Small-14                	  158150	      7444 ns/op	   44048 B/op	       9 allocs/op
+BenchmarkGunzipRead_Large-14                	     595	   2004334 ns/op	 5283074 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     604	   1974272 ns/op	 5283068 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     601	   1995899 ns/op	 5283074 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     610	   1973296 ns/op	 5283069 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     607	   2049279 ns/op	 5283066 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     588	   2019401 ns/op	 5283073 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     597	   1986271 ns/op	 5283070 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     602	   1993961 ns/op	 5283069 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     609	   1979997 ns/op	 5283069 B/op	      57 allocs/op
+BenchmarkGunzipRead_Large-14                	     609	   1971057 ns/op	 5283068 B/op	      57 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     301	   3986856 ns/op	22174707 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     302	   3982190 ns/op	22140006 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     297	   4008169 ns/op	22144606 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     300	   3983015 ns/op	22153005 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     298	   4000078 ns/op	22166199 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     304	   3957482 ns/op	22106451 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     302	   4013386 ns/op	22209476 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     295	   4071593 ns/op	22229002 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     298	   4043467 ns/op	22152121 B/op	   30061 allocs/op
+BenchmarkGunzipUnmarshal_Large-14           	     295	   4032862 ns/op	22129436 B/op	   30061 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     490	   2413097 ns/op	10535468 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     500	   2395204 ns/op	10526803 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     496	   2411826 ns/op	10526839 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     499	   2405550 ns/op	10526812 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     493	   2405789 ns/op	10526864 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     493	   2423755 ns/op	10526865 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     490	   2425540 ns/op	10526886 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     495	   2412969 ns/op	10526847 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     499	   2401261 ns/op	10526812 B/op	   30043 allocs/op
+BenchmarkGunzipReadAllUnmarshal_Large-14    	     499	   2406768 ns/op	10526813 B/op	   30043 allocs/op
+PASS
+ok  	github.com/bevicted/lognav/snapshot	48.448s
+PASS
+ok  	github.com/bevicted/lognav/state	0.371s
+?   	github.com/bevicted/lognav/state/statetest	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/ui	0.422s
+?   	github.com/bevicted/lognav/ui/common	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/ui/components/bar	0.389s
+?   	github.com/bevicted/lognav/ui/components/component	[no test files]
+?   	github.com/bevicted/lognav/ui/components/component/testutil	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/ui/components/dialog	0.397s
+?   	github.com/bevicted/lognav/ui/components/filehandler	[no test files]
+?   	github.com/bevicted/lognav/ui/components/helpoverlay	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/ui/components/instancepicker	0.419s
+?   	github.com/bevicted/lognav/ui/components/list	[no test files]
+goos: darwin
+goarch: arm64
+pkg: github.com/bevicted/lognav/ui/components/logviewer
+cpu: Apple M4 Max
+BenchmarkByteToCol_ASCII-14              	 3759438	       310.5 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3920368	       306.7 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3860466	       305.7 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3908556	       305.7 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3915560	       308.4 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3886420	       308.1 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3888008	       307.4 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3878300	       307.4 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3877098	       308.1 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_ASCII-14              	 3914607	       306.0 ns/op	    1792 B/op	       1 allocs/op
+BenchmarkByteToCol_Wide-14               	   60097	     19780 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   58474	     20603 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   57877	     20163 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   60868	     19741 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   63225	     19153 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   62844	     19342 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   62827	     19489 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   60144	     19541 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   61304	     19249 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkByteToCol_Wide-14               	   62524	     19486 ns/op	    4576 B/op	       2 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	700907115	         1.720 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	695896915	         1.726 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	695504000	         1.720 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	696620540	         1.720 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	681275936	         1.750 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	688938022	         1.727 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	704882559	         1.714 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	698016494	         1.714 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	706663144	         1.724 ns/op	       0 B/op	       0 allocs/op
+BenchmarkColorRule_ScanNoRules-14        	691531048	         1.727 ns/op	       0 B/op	       0 allocs/op
+2026/05/28 20:35:39 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkColorRule_Scan-14               	     435	   2719294 ns/op	 4157393 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:40 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     452	   2660290 ns/op	 4157386 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:42 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     448	   2668059 ns/op	 4157386 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:43 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     446	   2679398 ns/op	 4157388 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:44 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     448	   2676824 ns/op	 4157387 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:45 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     450	   2663388 ns/op	 4157396 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:46 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     444	   2681933 ns/op	 4157385 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:48 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     445	   2706040 ns/op	 4157385 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:49 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     436	   2711696 ns/op	 4157389 B/op	   18000 allocs/op
+BenchmarkColorRule_Scan-14               	2026/05/28 20:35:50 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     451	   2678824 ns/op	 4157385 B/op	   18000 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2101942	       568.4 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2110059	       570.7 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2090068	       573.1 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2096059	       572.1 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2110621	       568.4 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2099684	       571.8 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2094025	       572.8 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2093732	       571.5 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2103296	       571.7 ns/op	    2208 B/op	      11 allocs/op
+BenchmarkTokenize_SingleLine-14          	 2107977	       569.3 ns/op	    2208 B/op	      11 allocs/op
+2026/05/28 20:36:03 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkTokenize_MultiLine-14           	     756	   1609013 ns/op	 5454774 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:04 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     790	   1518178 ns/op	 5454755 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:06 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     798	   1508819 ns/op	 5454758 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:07 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     777	   1512913 ns/op	 5454760 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:08 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     786	   1515632 ns/op	 5454759 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:09 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     789	   1511152 ns/op	 5454759 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:10 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     789	   1514647 ns/op	 5454760 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:12 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     724	   1538280 ns/op	 5454761 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:13 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     781	   1517728 ns/op	 5454757 B/op	   46916 allocs/op
+BenchmarkTokenize_MultiLine-14           	2026/05/28 20:36:14 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     787	   1522748 ns/op	 5454759 B/op	   46916 allocs/op
+2026/05/28 20:36:15 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkRender_CacheHit-14              	 2325721	       516.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:16 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2343222	       512.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:18 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2291358	       523.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:19 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2329502	       519.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:20 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2262704	       528.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:21 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2348006	       511.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:22 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2279096	       527.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:24 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2350411	       511.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:25 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2350016	       511.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRender_CacheHit-14              	2026/05/28 20:36:26 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+ 2340099	       512.5 ns/op	       0 B/op	       0 allocs/op
+2026/05/28 20:36:27 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkRender_CacheMiss-14             	   16482	     72778 ns/op	  104647 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:29 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   16896	     71001 ns/op	  102853 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:31 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   17092	     70222 ns/op	  102816 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:33 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   17038	     71211 ns/op	  102802 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:35 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   16405	     72540 ns/op	  102745 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:37 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   16824	     71242 ns/op	  103023 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:39 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   16951	     70809 ns/op	  103022 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:41 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   16984	     70521 ns/op	  103067 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:43 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   16924	     70996 ns/op	  102933 B/op	     864 allocs/op
+BenchmarkRender_CacheMiss-14             	2026/05/28 20:36:45 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+   16828	     71038 ns/op	  102908 B/op	     864 allocs/op
+2026/05/28 20:36:47 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkRender_Scroll1k_Cap128-14       	     132	   9049478 ns/op	13244530 B/op	  108081 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:48 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8807181 ns/op	13024740 B/op	  108058 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:50 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8875058 ns/op	13062180 B/op	  108060 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:51 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     133	   8973210 ns/op	13034655 B/op	  108058 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:52 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     134	   8857244 ns/op	13036280 B/op	  108058 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:53 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     134	   8840657 ns/op	13045866 B/op	  108060 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:54 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8832126 ns/op	13026733 B/op	  108058 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:56 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8806085 ns/op	13038585 B/op	  108058 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:57 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8855251 ns/op	13040679 B/op	  108059 allocs/op
+BenchmarkRender_Scroll1k_Cap128-14       	2026/05/28 20:36:58 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8836480 ns/op	13053660 B/op	  108059 allocs/op
+2026/05/28 20:36:59 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkRender_Scroll1k_Cap1024-14      	     130	   9142853 ns/op	13175302 B/op	  108071 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:00 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     134	   8885684 ns/op	12926844 B/op	  108047 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:02 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8829160 ns/op	12913095 B/op	  108046 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:03 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     133	   8957378 ns/op	12919379 B/op	  108047 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:04 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     134	   8877922 ns/op	12959079 B/op	  108048 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:05 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     135	   8907434 ns/op	12935134 B/op	  108047 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:06 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     132	   9047420 ns/op	12934554 B/op	  108047 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:08 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     134	   8911079 ns/op	12937359 B/op	  108047 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:09 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     134	   8869409 ns/op	12927785 B/op	  108047 allocs/op
+BenchmarkRender_Scroll1k_Cap1024-14      	2026/05/28 20:37:10 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     134	   8874233 ns/op	12931217 B/op	  108047 allocs/op
+BenchmarkSearch_ACBuild-14               	  185042	      6586 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  179725	      6543 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  177416	      6619 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  184729	      6556 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  182770	      6654 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  179683	      6634 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  187987	      6613 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  185733	      6622 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  178399	      6603 ns/op	   16208 B/op	      83 allocs/op
+BenchmarkSearch_ACBuild-14               	  176470	      6623 ns/op	   16208 B/op	      83 allocs/op
+2026/05/28 20:37:23 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkSearch_Match-14                 	     532	   2247830 ns/op	  616003 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:24 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     536	   2238129 ns/op	  616002 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:26 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     534	   2240638 ns/op	  616003 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:27 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     532	   2241703 ns/op	  616002 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:28 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     534	   2243738 ns/op	  616002 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:29 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     535	   2233163 ns/op	  616001 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:30 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     537	   2231297 ns/op	  616002 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:32 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     534	   2237163 ns/op	  616001 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:33 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     537	   2234873 ns/op	  616002 B/op	   16000 allocs/op
+BenchmarkSearch_Match-14                 	2026/05/28 20:37:34 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     536	   2241895 ns/op	  616002 B/op	   16000 allocs/op
+2026/05/28 20:37:35 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+BenchmarkSearch_Dispatch_Amortized-14    	     490	   2427636 ns/op	 1277847 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:36 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     488	   2442380 ns/op	 1277846 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:38 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     486	   2454264 ns/op	 1277846 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:39 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     487	   2444328 ns/op	 1277844 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:40 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     494	   2428979 ns/op	 1277844 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:41 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     495	   2423811 ns/op	 1277846 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:42 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     490	   2434979 ns/op	 1277845 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:44 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     493	   2431963 ns/op	 1277846 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:45 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     490	   2428045 ns/op	 1277846 B/op	   17620 allocs/op
+BenchmarkSearch_Dispatch_Amortized-14    	2026/05/28 20:37:46 INFO logs set component=logstore instance=bench count=5000 earliest=1000000 latest=1004999
+     495	   2430324 ns/op	 1277847 B/op	   17620 allocs/op
+PASS
+ok  	github.com/bevicted/lognav/ui/components/logviewer	164.403s
+PASS
+ok  	github.com/bevicted/lognav/ui/components/queryeditor	0.550s
+PASS
+ok  	github.com/bevicted/lognav/ui/components/queryeditor/highlight	0.330s
+?   	github.com/bevicted/lognav/ui/components/snapshothandler	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/ui/components/statusline	0.413s
+PASS
+ok  	github.com/bevicted/lognav/ui/components/tabs	0.370s
+PASS
+ok  	github.com/bevicted/lognav/ui/components/timeline	0.406s
+?   	github.com/bevicted/lognav/ui/keys	[no test files]
+?   	github.com/bevicted/lognav/ui/keys/keystest	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/ui/msgs	0.423s
+?   	github.com/bevicted/lognav/ui/styles	[no test files]
+PASS
+ok  	github.com/bevicted/lognav/ui/utils	0.313s
+PASS
+ok  	github.com/bevicted/lognav/xdg	0.338s

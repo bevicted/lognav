@@ -1,0 +1,211 @@
+version: "2"
+run:
+  concurrency: 4
+  timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 50
+
+linters:
+  enable:
+    # correctness
+    - govet
+    - staticcheck
+    - unused
+    - errcheck
+    - errorlint
+    - nilerr
+    - forcetypeassert
+    - copyloopvar
+    - durationcheck
+    - reassign
+    # style
+    - gocritic
+    - revive
+    - whitespace
+    - godot
+    - misspell
+    - predeclared
+    - errname
+    - asciicheck
+    # complexity
+    - gocyclo
+    - nestif
+    - funlen
+    - dupl
+    # performance
+    - perfsprint
+    - prealloc
+    - unconvert
+    - ineffassign
+    - goconst
+    # security & resources
+    - gosec
+    - bidichk
+    - bodyclose
+    - noctx
+    - fatcontext
+    - sqlclosecheck
+    - rowserrcheck
+    # logging
+    - sloglint
+    - loggercheck
+    # testing
+    - testifylint
+    - usetesting
+    # modernization & meta
+    - modernize
+    - exptostd
+    - intrange
+    - usestdlibvars
+    - nolintlint
+
+  disable:
+    - lll
+    - wrapcheck
+    - err113
+    - mnd
+    - iface
+    - nakedret
+    - noinlineerr
+    - gocognit
+    - cyclop
+    - goheader
+    - importas
+    - funcorder
+    - godoclint
+    - varnamelen
+    - exhaustruct
+    - gochecknoglobals
+    - gochecknoinits
+    - unparam
+    - makezero
+    - testpackage
+    - embeddedstructfieldcheck
+    - iotamixing
+    - unqueryvet
+    - recvcheck
+    - mirror
+    - protogetter
+    - spancheck
+    - zerologlint
+    - wsl_v5
+
+  exclusions:
+    paths:
+      - vendor$
+      - third_party$
+    rules:
+      # Test functions are often long because of table-driven test data.
+      - path: _test\.go
+        linters:
+          - funlen
+      # TODO(F.1 T9): bench fixture helpers are defined before their callers
+      # (T5–T9 bench files); suppress unused until all bench files are added.
+      # Remove this exclusion once T5–T9 land and every helper has a caller.
+      - path: benchfixtures_test\.go
+        linters:
+          - unused
+      # Deterministic seeded PRNG (math/rand/v2 PCG) is intentional for
+      # benchmark reproducibility; crypto/rand is not needed here.
+      - path: benchfixtures_test\.go
+        linters:
+          - gosec
+
+  settings:
+    depguard:
+      # Make the bubbletea-removal (uv migration) permanent: no first-party
+      # package may re-import the four dropped charm Elm-stack modules. The
+      # deny-list leaves every other charm package (ultraviolet, x/ansi,
+      # x/term, ...) allowed everywhere.
+      rules:
+        charm-elm-removed:
+          deny:
+            - pkg: charm.land/bubbletea/v2
+              desc: removed in uv migration; drive the internal/ui/runtime spine
+            - pkg: charm.land/bubbles/v2
+              desc: removed in uv migration; use uv-native components
+            - pkg: charm.land/lipgloss/v2
+              desc: removed in uv migration (R5b); use x/ansi + ultraviolet
+            - pkg: charm.land/glamour/v2
+              desc: removed in uv migration (R5c); no in-repo markdown renderer
+        icl-sdk-removed:
+          # Make the IBM ICL SDK removal permanent: internal/icl is now a
+          # hand-rolled net/http /v1/query SSE client. No package may re-import
+          # the dropped SDK or strfmt.
+          deny:
+            - pkg: github.com/IBM/logs-go-sdk
+              desc: removed; use internal/icl (hand-rolled net/http /v1/query client)
+            - pkg: github.com/IBM/go-sdk-core/v5
+              desc: removed with logs-go-sdk; use internal/icl + net/http
+            - pkg: github.com/go-openapi/strfmt
+              desc: removed; use icl.formatICLTime for ICL date formatting
+    dupl:
+      threshold: 100
+    errcheck:
+      check-type-assertions: true
+      exclude-functions:
+        # Close on cleanup paths — error not actionable.
+        - (io.Closer).Close
+        - (net.Conn).Close
+        - (*os.File).Close
+        - (*net/http.Response).Body.Close
+        # File removal in cleanup/temp paths — missing-file errors are fine.
+        - os.Remove
+        # HTTP ResponseWriter.Write — caller already disconnected if it fails.
+        - (net/http.ResponseWriter).Write
+        # CLI output to stdout/stderr — broken pipe is not actionable.
+        - fmt.Fprint
+        - fmt.Fprintln
+        - fmt.Fprintf
+    funlen:
+      lines: 120
+      statements: 80
+    goconst:
+      min-len: 3
+      min-occurrences: 4
+      # Table-driven tests (mandated by AGENTS.md) naturally repeat literals in
+      # their case data; flagging those fights the testing standard.
+      ignore-tests: true
+    gocyclo:
+      min-complexity: 13
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    paralleltest:
+      # We adopt t.Parallel() on-touch (AGENTS.md migration policy).
+      # Suppress the missing-call warnings so existing tests are not flagged;
+      # the linter still enforces parallel-correctness for tests that do call
+      # t.Parallel() (e.g. range-var capture in subtests).
+      ignore-missing: true
+      ignore-missing-subtests: true
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    gosec:
+      excludes:
+        # G104: unchecked errors — covered by errcheck with our exclude list.
+        - G104
+        # G304 removed: per-site #nosec G304 directives enforce explicit rationale.
+        # G115: numeric overflow conversions — high false-positive rate on protocol/slice code.
+        - G115
+    exhaustive:
+      default-signifies-exhaustive: true
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+  settings:
+    gofumpt:
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
