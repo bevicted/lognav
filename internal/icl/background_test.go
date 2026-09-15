@@ -17,19 +17,20 @@ func TestSubmitBackgroundQuery_OK(t *testing.T) {
 	t.Parallel()
 	var gotPath, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
 		gotPath = r.URL.Path
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
-		_, _ = w.Write([]byte(`{"queryId":"abc-123","warnings":[]}`))
+		_, _ = w.Write([]byte(`{"query_id":"abc-123","warnings":[]}`))
 	}))
 	defer srv.Close()
 	id, err := SubmitBackgroundQuery(context.Background(), "tok", srv.URL, "source logs last 7d | count")
 	require.NoError(t, err)
 	assert.Equal(t, "abc-123", id)
 	assert.Equal(t, bgSubmitPath, gotPath)
-	assert.Contains(t, gotBody, `"syntax":"QUERY_SYNTAX_DATAPRIME"`)
-	assert.Contains(t, gotBody, `"startDate"`)
-	assert.Contains(t, gotBody, `"endDate"`)
+	assert.Contains(t, gotBody, `"syntax":"dataprime"`)
+	assert.Contains(t, gotBody, `"start_date"`)
+	assert.Contains(t, gotBody, `"end_date"`)
 }
 
 func TestSubmitBackgroundQuery_CompileError(t *testing.T) {
@@ -52,17 +53,18 @@ func TestGetBackgroundQueryStatus_States(t *testing.T) {
 		code int
 		want BackgroundState
 	}{
+		{"waiting", `{"waiting_for_execution":{}}`, 200, BackgroundRunning},
 		{"running", `{"running":{}}`, 200, BackgroundRunning},
-		{"success", `{"terminated":{"success":{}},"submittedAt":"2026-06-20T15:04:05Z"}`, 200, BackgroundSuccess},
+		{"success", `{"terminated":{"success":{}},"submitted_at":"2026-06-20T15:04:05Z"}`, 200, BackgroundSuccess},
 		{"cancelled", `{"terminated":{"cancelled":{}}}`, 200, BackgroundError},
-		{"notfound-4xx", `Query not found`, 404, BackgroundNotFound},
-		{"notfound-2xx", `Query not found`, 200, BackgroundNotFound},
+		{"notfound", `Query not found`, 404, BackgroundNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, bgStatusPath, r.URL.Path)
+				assert.Equal(t, http.MethodGet, r.Method)
+				assert.Equal(t, bgStatusPath("q"), r.URL.Path)
 				w.WriteHeader(tc.code)
 				_, _ = w.Write([]byte(tc.body))
 			}))
@@ -93,7 +95,8 @@ func TestGetBackgroundQueryStatus_TransientErrorNotExpired(t *testing.T) {
 func TestCancelBackgroundQuery_OK(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, bgCancelPath, r.URL.Path)
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, bgCancelPath("q"), r.URL.Path)
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
@@ -111,23 +114,25 @@ func (c *captureCB) OnClose()             { c.closed = true }
 func (c *captureCB) OnError(e error)      { c.errs = append(c.errs, e) }
 func (c *captureCB) OnKeepAlive()         {}
 
-func TestFetchBackgroundData_StreamsNDJSON(t *testing.T) {
+func TestFetchBackgroundData_StreamsSSE(t *testing.T) {
 	t.Parallel()
-	fixture, err := os.ReadFile("testdata/background_data.ndjson")
+	fixture, err := os.ReadFile("testdata/background_data.sse")
 	require.NoError(t, err)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, bgDataPath, r.URL.Path)
-		w.Header().Set("Content-Type", "application/x-ndjson")
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, bgDataPath("q"), r.URL.Path)
+		assert.Equal(t, "text/event-stream", r.Header.Get("Accept"))
+		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write(fixture)
 	}))
 	defer srv.Close()
 
 	cb := &captureCB{}
 	require.NoError(t, FetchBackgroundData(context.Background(), "tok", srv.URL, "q", cb, 0))
-	// Two batches -> two OnData calls, each one row; camelCase userData must decode (not nil).
+	// Two events -> two OnData calls, each containing one row.
 	require.Len(t, cb.items, 2)
 	logs, _, errs := DecodeStreamItem(cb.items[0]) // DecodeStreamItem returns (logs, warns, errs)
-	assert.Empty(t, errs, "camelCase userData must decode without a nil-UserData error")
+	assert.Empty(t, errs, "public snake_case user_data must decode")
 	assert.Len(t, logs, 1)
 	assert.Empty(t, cb.errs)
 	assert.True(t, cb.closed, "FetchBackgroundData self-closes on the success path (mirrors Query)")
@@ -137,12 +142,12 @@ func TestFetchBackgroundData_StreamsNDJSON(t *testing.T) {
 // rather than the downstream LogStore cap, bounds a 50,001-row first batch.
 func TestFetchBackgroundData_TrimsOversizedFirstBatch(t *testing.T) {
 	t.Parallel()
-	const row = `{"userData":"{}"}`
-	body := `{"response":{"results":{"results":[` +
+	const row = `{"user_data":"{}"}`
+	body := `data: {"response":{"results":{"results":[` +
 		strings.TrimSuffix(strings.Repeat(row+",", int(SyncQueryLimit)+1), ",") +
-		`]}}}` + "\n"
+		`]}}}` + "\n\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(body))
 	}))
 	defer srv.Close()
@@ -158,7 +163,8 @@ func TestFetchBackgroundData_TrimsOversizedFirstBatch(t *testing.T) {
 func TestFetchBackgroundData_NonSuccessBodyIsError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("Query is not completed: query cancelled"))
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte("query is not completed"))
 	}))
 	defer srv.Close()
 	cb := &captureCB{}
@@ -170,10 +176,10 @@ func TestFetchBackgroundData_NonSuccessBodyIsError(t *testing.T) {
 
 func TestFetchBackgroundData_StopsAtMaxRows(t *testing.T) {
 	t.Parallel()
-	// Build a server that streams 10 single-row NDJSON batches.
-	row := `{"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:05.000000"}],"labels":[],"userData":"{}"}]}}}` + "\n"
+	// Build a server that streams 10 single-row SSE events.
+	row := `data: {"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:05.000000"}],"labels":[],"user_data":"{}"}]}}}` + "\n\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Content-Type", "text/event-stream")
 		for range 10 {
 			_, _ = w.Write([]byte(row))
 		}

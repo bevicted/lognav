@@ -595,9 +595,8 @@ func TestInstance_RestoreSnapshot_DemotesWatching(t *testing.T) {
 		"a snapshot captured mid-watch must restore as Enabled, not stuck in Watching")
 }
 
-// bgDataLine is one NDJSON /data batch carrying a single camelCase-userData row,
-// matching the shape FetchBackgroundData streams.
-const bgDataLine = `{"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:05.000000"}],"labels":[{"key":"applicationname","value":"app"}],"userData":"{\"log\":\"hi\"}"}]}}}` + "\n"
+// bgDataEvent is one public /data SSE event carrying a single result row.
+const bgDataEvent = `data: {"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:05.000000"}],"labels":[{"key":"applicationname","value":"app"}],"user_data":"{\"log\":\"hi\"}"}]}}}` + "\n\n"
 
 // TestInstance_StartQuery_SyncSourceUnchanged proves the empty (zero-value)
 // querySource keeps the sync icl.Query routing: every current caller passes the
@@ -609,7 +608,7 @@ func TestInstance_StartQuery_SyncSourceUnchanged(t *testing.T) {
 		// The sync (empty-source) path must hit the sync /v1/query endpoint, never
 		// the background /data endpoint.
 		assert.Contains(t, r.URL.Path, "/v1/query")
-		assert.NotContains(t, r.URL.Path, "background-query")
+		assert.NotContains(t, r.URL.Path, "background_query")
 		w.Header().Set("Content-Type", "text/event-stream")
 	}))
 	// StartQuery uses icl's shared HTTP client. Disable keep-alives so this
@@ -694,17 +693,16 @@ func TestInstance_StartQuery_SyncSourceUsesConfiguredRequestLimit(t *testing.T) 
 }
 
 // TestInstance_StartQuery_BackgroundSourceRoutesToFetchBackgroundData proves a
-// non-empty querySource{queryID} reroutes the StartQuery off-loop body to
-// icl.FetchBackgroundData: against an NDJSON /data server it decodes the
-// camelCase-userData rows and delivers them via the same QueryCallback the sync
-// path uses.
+// non-empty querySource{queryID} reroutes the StartQuery off-loop body to the
+// public background data SSE endpoint and delivers rows via QueryCallback.
 func TestInstance_StartQuery_BackgroundSourceRoutesToFetchBackgroundData(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "background-query/data",
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Contains(t, r.URL.Path, "background_query/qid-1234/data",
 			"a background source must hit the /data endpoint, not /v1/query")
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		_, _ = w.Write([]byte(bgDataLine))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(bgDataEvent))
 	}))
 	// StartQuery uses icl's shared HTTP client. Disable keep-alives so this
 	// test's connection is closed rather than retained by that client.
@@ -712,7 +710,7 @@ func TestInstance_StartQuery_BackgroundSourceRoutesToFetchBackgroundData(t *test
 	t.Cleanup(srv.Close)
 
 	inst := newTestInstance(t, "bg")
-	inst.url = srv.URL                             // FetchBackgroundData posts to url+/api/v1/...
+	inst.url = srv.URL
 	inst.source = querySource{queryID: "qid-1234"} // non-empty => background routing
 
 	var rows int
@@ -726,8 +724,8 @@ func TestInstance_StartQuery_BackgroundSourceRoutesToFetchBackgroundData(t *test
 		}
 	}
 	inst.StartQuery("tok", "ignored-for-background", 0, send, &fakePoster{})
-	assert.False(t, sawErr, "background NDJSON must decode without a stream error")
-	assert.Equal(t, 1, rows, "the single NDJSON batch's row must be delivered via OnData")
+	assert.False(t, sawErr, "background SSE must decode without a stream error")
+	assert.Equal(t, 1, rows, "the single SSE event's row must be delivered via OnData")
 }
 
 // TestInstance_StartQuery_BackgroundSourceCapsAtFixedCollectLimit verifies that
@@ -738,14 +736,14 @@ func TestInstance_StartQuery_BackgroundSourceCapsAtFixedCollectLimit(t *testing.
 	t.Parallel()
 
 	const (
-		row    = `{"userData":"{}"}`
-		prefix = `{"response":{"results":{"results":[`
+		row    = `{"user_data":"{}"}`
+		prefix = `data: {"response":{"results":{"results":[`
 		suffix = `]}}}`
 	)
-	body := prefix + strings.TrimSuffix(strings.Repeat(row+",", int(icl.SyncQueryLimit)), ",") + suffix + "\n" +
-		prefix + row + suffix + "\n"
+	body := prefix + strings.TrimSuffix(strings.Repeat(row+",", int(icl.SyncQueryLimit)), ",") + suffix + "\n\n" +
+		prefix + row + suffix + "\n\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)

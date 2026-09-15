@@ -62,29 +62,28 @@ or at-rest disclosure.
 
 An ICL **background query** is server work used by the local [archive](./archive.md)
 registry. It is not a synchronous query and it is not a collected snapshot.
-The endpoints are:
+The implementation follows the public
+[IBM Logs Go SDK](https://github.com/IBM/logs-go-sdk/tree/v0.7.0/logsv0):
 
-| Operation | Endpoint                                         | Result                                |
-| --------- | ------------------------------------------------ | ------------------------------------- |
-| Submit    | `POST /api/v1/dataprime/background-query`        | server `queryId`                      |
-| Status    | `POST /api/v1/dataprime/background-query/status` | running, success, error, or not found |
-| Data      | `POST /api/v1/dataprime/background-query/data`   | finished NDJSON result                |
-| Cancel    | `POST /api/v1/dataprime/background-query/cancel` | server data is deleted                |
+| Operation | Endpoint                                      | Result                                |
+| --------- | --------------------------------------------- | ------------------------------------- |
+| Submit    | `POST /v1/background_query`                   | server `query_id`                     |
+| Status    | `GET /v1/background_query/{query_id}/status` | running, success, error, or not found |
+| Data      | `GET /v1/background_query/{query_id}/data`   | finished SSE result                   |
+| Cancel    | `POST /v1/background_query/{query_id}/cancel` | server data is deleted                |
 
-Submit uses top-level camelCase `query`, `syntax`, `startDate`, and `endDate`.
-The data endpoint returns NDJSON batches and is decoded with `encoding/json`.
-Its `userData` field is camelCase, unlike the synchronous `user_data` field.
-Batches are converted to the normal stream item shape before callback delivery.
+Submit uses snake_case date fields and the `dataprime` syntax value. The data
+endpoint returns SSE batches containing the same snake_case result rows used by
+synchronous queries. Batches are converted to the normal stream item shape
+before callback delivery.
 
 A finished server result can contain up to 1,000,000 rows. `FetchBackgroundData`
 accepts an optional delivery cap; it trims the final batch and treats reaching
 the cap as successful completion. It uses a 30-minute maximum context because a
 finished result can be large. A successful download calls `OnClose` once; setup,
-HTTP, and NDJSON errors are returned for the caller to report through `OnError`.
+HTTP, SSE, and decode errors are returned for the caller to report through `OnError`.
 A non-success data response must therefore not become a silent zero-row result.
 
 Status maps successful termination to success and every other terminal state to
-error. A genuine HTTP 404, or a successful response explicitly saying the query
-does not exist, is not found and is the expiry signal. Other HTTP and transport
-errors remain transient errors; treating their incidental text as expiry would
-permanently freeze a query that might still be fetched.
+error. HTTP 404 is not found and is the expiry signal. Other HTTP and transport
+errors remain transient errors.

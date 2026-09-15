@@ -1,0 +1,5 @@
+data: {"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:05.000000"}],"labels":[{"key":"applicationname","value":"app-a"}],"user_data":"{\"log\":\"hello\"}"}]}}}
+
+data: {"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:06.000000"}],"labels":[{"key":"applicationname","value":"app-a"}],"user_data":"{\"log\":\"world\"}"}]}}}
+
+: end

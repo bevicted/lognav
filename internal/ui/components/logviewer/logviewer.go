@@ -23,8 +23,8 @@ import (
 const clippy = `╭──╮     ╭─────────────────────────────────────────────────────────────╮
 │  │     │ It looks like you forgot to fetch logs.                     │
 @  @  ╭  │ You can do that in the instances tab by pressing f.         │
-││ ││ │  │ Need help? Press '?', check out the docs in the lognav repo │
-││ ││ ╯  │ or just ask in the #lognav-users slack channel.             │
+││ ││ │  │ Need help? Press '?', or check the docs and issues in the   │
+││ ││ ╯  │ lognav repository.                                          │
 │╰─╯│    │                                                             │
 ╰───╯    ╰─────────────────────────────────────────────────────────────╯`
 

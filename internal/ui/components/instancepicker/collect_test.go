@@ -24,27 +24,24 @@ import (
 	"github.com/bevicted/lognav/internal/ui/status"
 )
 
-// ndjsonDataServer returns an httptest server that answers the background-query
-// /data endpoint with the given per-queryId NDJSON body. A queryId mapped to ""
-// (or absent) returns a non-success error string, exercising the errored-instance
-// collect path. The status endpoint always reports success so the collect proceeds.
-func ndjsonDataServer(t *testing.T, byQueryID map[string]string) *httptest.Server {
+// sseDataServer answers the public background data endpoint with the configured
+// per-query-ID SSE body. A missing body returns an HTTP error, exercising the
+// errored-instance collection path.
+func sseDataServer(t *testing.T, byQueryID map[string]string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := readAllBody(r)
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/data"):
-			id := queryIDFromBody(body)
-			ndjson, ok := byQueryID[id]
-			if !ok || ndjson == "" {
-				// A non-success terminal /data returns a plain error string, not NDJSON;
-				// FetchBackgroundData surfaces it as an error -> cb.OnError -> message.
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("Query is not completed: query failed for " + id))
+			assert.Equal(t, http.MethodGet, r.Method)
+			id := queryIDFromDataPath(r.URL.Path)
+			sse, ok := byQueryID[id]
+			if !ok || sse == "" {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte("query is not completed: " + id))
 				return
 			}
-			w.Header().Set("Content-Type", "application/x-ndjson")
-			_, _ = w.Write([]byte(ndjson))
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte(sse))
 		default:
 			_, _ = w.Write([]byte(`{}`))
 		}
@@ -53,31 +50,15 @@ func ndjsonDataServer(t *testing.T, byQueryID map[string]string) *httptest.Serve
 	return srv
 }
 
-func readAllBody(r *http.Request) (string, error) {
-	if r.Body == nil {
-		return "", nil
-	}
-	defer func() { _ = r.Body.Close() }()
-	buf := make([]byte, 1<<16)
-	n, _ := r.Body.Read(buf)
-	return string(buf[:n]), nil
-}
-
-// queryIDFromBody extracts the queryId value from a {"queryId":"..."} JSON body
-// without a full unmarshal (the body is tiny and fixed-shape).
-func queryIDFromBody(body string) string {
-	_, rest, ok := strings.Cut(body, `"queryId":"`)
-	if !ok {
+func queryIDFromDataPath(requestPath string) string {
+	parts := strings.Split(strings.Trim(requestPath, "/"), "/")
+	if len(parts) != 4 || parts[0] != "v1" || parts[1] != "background_query" || parts[3] != "data" {
 		return ""
 	}
-	id, _, ok := strings.Cut(rest, `"`)
-	if !ok {
-		return ""
-	}
-	return id
+	return parts[2]
 }
 
-const oneRowNDJSON = `{"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:05.000000"}],"labels":[{"key":"applicationname","value":"app"}],"userData":"{\"log\":\"hello\"}"}]}}}` + "\n"
+const oneRowSSE = `data: {"response":{"results":{"results":[{"metadata":[{"key":"timestamp","value":"2026-06-20T15:04:05.000000"}],"labels":[{"key":"applicationname","value":"app"}],"user_data":"{\"log\":\"hello\"}"}]}}}` + "\n\n"
 
 // queuePoster runs every spawned worker on an explicit drain, FIFO, instead of
 // inline. This faithfully reproduces the production ordering the inline fakePoster
@@ -195,15 +176,15 @@ func runCollect(t *testing.T, m *Model, a *archive.Archive) {
 }
 
 // TestStartCollect_TwoInstances_FinalizesSnapshotWithBothRows proves the happy
-// collect path: a 2-instance ready archive whose /data servers stream NDJSON
+// collect path: a 2-instance ready archive whose /data servers stream SSE
 // produces one finalized snapshot carrying both instances' rows, and m.collecting
 // is reset after finalize.
 func TestStartCollect_TwoInstances_FinalizesSnapshotWithBothRows(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir()) // confine snapshot.Dir() + archive.Dir(); OS-shared state -> no t.Parallel
 
-	dataSrv := ndjsonDataServer(t, map[string]string{
-		"qid-a": oneRowNDJSON,
-		"qid-b": oneRowNDJSON,
+	dataSrv := sseDataServer(t, map[string]string{
+		"qid-a": oneRowSSE,
+		"qid-b": oneRowSSE,
 	})
 	am, closeSrv := oidcTokenServer(t, "inst-a", "inst-b")
 	defer closeSrv()
@@ -245,7 +226,7 @@ func TestStartCollect_TwoInstances_FinalizesSnapshotWithBothRows(t *testing.T) {
 	for _, name := range []string{testCRN("a"), testCRN("b")} {
 		logs, err := snapshot.LoadInstanceLogs(c, name)
 		require.NoError(t, err, "instance %s must have a log frame", name)
-		assert.Len(t, logs, 1, "instance %s streamed one NDJSON row", name)
+		assert.Len(t, logs, 1, "instance %s streamed one SSE row", name)
 		_, wantSize, err := snapshot.PrepareInstanceFrame(logs)
 		require.NoError(t, err)
 		for _, inst := range state.InstancePickerSnapshot.Instances {
@@ -263,7 +244,7 @@ func TestStartCollect_TwoInstances_FinalizesSnapshotWithBothRows(t *testing.T) {
 func TestStartCollect_AllErrored_StillFinalizesWithMessages(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
-	dataSrv := ndjsonDataServer(t, map[string]string{}) // every queryId -> error string
+	dataSrv := sseDataServer(t, map[string]string{}) // every query ID returns an HTTP error
 	am, closeSrv := oidcTokenServer(t, "inst-a", "inst-b")
 	defer closeSrv()
 
@@ -294,7 +275,7 @@ func TestStartCollect_AllErrored_StillFinalizesWithMessages(t *testing.T) {
 	assertContainerMembership(t, c, []string{testCRN("a"), testCRN("b")})
 	for _, is := range state.InstancePickerSnapshot.Instances {
 		assert.NotEmpty(t, is.Message, "errored instance %s must carry its error in Message", is.CRN)
-		assert.Zero(t, is.LogsSizeBytes, "errored collection member has no native NDJSON output")
+		assert.Zero(t, is.LogsSizeBytes, "errored collection member has no streamed output")
 	}
 }
 
@@ -304,7 +285,7 @@ func TestStartCollect_AllErrored_StillFinalizesWithMessages(t *testing.T) {
 func TestStartCollect_Cancelled_ResetsCollecting(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
-	dataSrv := ndjsonDataServer(t, map[string]string{"qid-a": oneRowNDJSON})
+	dataSrv := sseDataServer(t, map[string]string{"qid-a": oneRowSSE})
 	am, closeSrv := oidcTokenServer(t, "inst-a")
 	defer closeSrv()
 
