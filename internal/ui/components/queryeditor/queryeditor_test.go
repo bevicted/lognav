@@ -89,9 +89,9 @@ func TestNewAt_UsesPublicDefaultQueryAndGenericSnippets(t *testing.T) {
 	m, err := newAt(t.Context(), depstest.NewTest(t), &EventHandler{}, at)
 
 	require.NoError(t, err)
-	assert.Equal(t, "source logs between @'2025-01-01' and @'now'\n| orderby $m.timestamp asc\n", m.Query())
+	assert.Equal(t, "source logs between @'2025-01-01' and @'now'\n| filter $l.subsystemname == 'example-service'\n// | filter $d ~~ 'search for something'\n| orderby $m.timestamp asc\n", m.Query())
 	assert.Contains(t, m.snippets, snippet{Snippet: "| filter $l.subsystemname == 'service'", Description: "keep rows matching condition (alias: f)"})
-	assert.NotContains(t, m.Query(), "subsystemname")
+	assert.NotContains(t, m.Query(), "armada-api")
 }
 
 func TestNewAt_TemplateErrorIncludesSource(t *testing.T) {

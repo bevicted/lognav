@@ -147,6 +147,8 @@ func newConfig() *Config {
 				"bluemix": {IAMURL: "https://iam.cloud.ibm.com/identity"},
 			},
 			DefaultQuery: `source logs between @'{{ date -1 }}' and @'now'
+| filter $l.subsystemname == 'example-service'
+// | filter $d ~~ 'search for something'
 | orderby $m.timestamp asc
 `,
 		},
