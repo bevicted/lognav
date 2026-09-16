@@ -68,8 +68,8 @@ The implementation follows the public
 | Operation | Endpoint                                      | Result                                |
 | --------- | --------------------------------------------- | ------------------------------------- |
 | Submit    | `POST /v1/background_query`                   | server `query_id`                     |
-| Status    | `GET /v1/background_query/{query_id}/status` | running, success, error, or not found |
-| Data      | `GET /v1/background_query/{query_id}/data`   | finished SSE result                   |
+| Status    | `GET /v1/background_query/{query_id}/status`  | running, success, error, or not found |
+| Data      | `GET /v1/background_query/{query_id}/data`    | finished SSE result                   |
 | Cancel    | `POST /v1/background_query/{query_id}/cancel` | server data is deleted                |
 
 Submit uses snake_case date fields and the `dataprime` syntax value. The data
