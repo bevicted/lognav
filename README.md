@@ -4,7 +4,16 @@
 searching IBM Cloud Logs. It supports parallel Dataprime queries, jq filtering,
 snapshots, and optional API-key or 1Password authentication.
 
-## Install from source
+## Install
+
+With Go:
+
+```sh
+go install -trimpath github.com/bevicted/lognav@latest
+lognav completion --install
+```
+
+Or build from source:
 
 ```sh
 git clone https://github.com/bevicted/lognav.git
@@ -13,9 +22,6 @@ mkdir -p bin
 go build -trimpath -o bin/lognav .
 ./bin/lognav completion --install
 ```
-
-Alternatively, install the public module with `go install -trimpath
-github.com/bevicted/lognav@latest` after a release is available.
 
 ## Configure an instance
 
