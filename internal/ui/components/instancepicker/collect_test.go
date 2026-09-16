@@ -37,7 +37,7 @@ func sseDataServer(t *testing.T, byQueryID map[string]string) *httptest.Server {
 			sse, ok := byQueryID[id]
 			if !ok || sse == "" {
 				w.WriteHeader(http.StatusConflict)
-				_, _ = w.Write([]byte("query is not completed: " + id))
+				_, _ = w.Write([]byte("query is not completed"))
 				return
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
