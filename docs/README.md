@@ -20,8 +20,9 @@ Build from the public source repository:
 ```sh
 git clone https://github.com/bevicted/lognav.git
 cd lognav
-go build -trimpath -o lognav .
-./lognav completion --install
+mkdir -p bin
+go build -trimpath -o bin/lognav .
+./bin/lognav completion --install
 ```
 
 After a release is available, install the public module instead:
@@ -39,7 +40,7 @@ shell session after installation.
 
 Configure at least one IBM Cloud Logs instance before querying. `icl.instances`
 is a writable list; use `[]` when you intentionally want no instances. Save this
-at the path printed by `./lognav config path`:
+at the path printed by `./bin/lognav config path`:
 
 ```yaml
 version: 1
@@ -54,17 +55,17 @@ An API key is not required: start lognav and use the IAM browser/passcode flow
 when prompted.
 
 ```sh
-./lognav
+./bin/lognav
 ```
 
 To authenticate before opening the TUI, use the standalone login command:
 
 ```sh
-./lognav login
+./bin/lognav login
 ```
 
-The quick-start commands use the `./lognav` binary built above. If you installed
-with `go install`, use `lognav` instead.
+The quick-start commands use the `./bin/lognav` binary built above. If you
+installed with `go install`, use `lognav` instead.
 
 See [Authentication](user/authentication.md) for saved-session behavior and
 optional API-key or 1Password configuration. Edit the rest of your configuration

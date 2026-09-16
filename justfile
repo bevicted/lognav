@@ -22,7 +22,8 @@ run *args:
     exec "${TMPDIR:-/tmp}/lognav-dev" "$@"
 
 build:
-    go build -trimpath -o lognav .
+    mkdir -p bin
+    go build -trimpath -o bin/lognav .
 
 install-remote:
     go install -trimpath github.com/bevicted/lognav@latest

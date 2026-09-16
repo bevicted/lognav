@@ -9,8 +9,9 @@ snapshots, and optional API-key or 1Password authentication.
 ```sh
 git clone https://github.com/bevicted/lognav.git
 cd lognav
-go build -trimpath -o lognav .
-./lognav completion --install
+mkdir -p bin
+go build -trimpath -o bin/lognav .
+./bin/lognav completion --install
 ```
 
 Alternatively, install the public module with `go install -trimpath
@@ -19,7 +20,7 @@ github.com/bevicted/lognav@latest` after a release is available.
 ## Configure an instance
 
 lognav has no configured instances by default. Create the file printed by
-`./lognav config path` and add an IBM Cloud Logs instance:
+`./bin/lognav config path` and add an IBM Cloud Logs instance:
 
 ```yaml
 version: 1
@@ -30,10 +31,11 @@ icl:
 ```
 
 Replace the placeholder CRN values with the instance's IBM Cloud Resource Name.
-Run `./lognav` and complete the IAM browser/passcode prompt, or use `./lognav login`
-first. See [the embedded setup guide](docs/README.md) and run `./lognav --help` or
-`./lognav config describe` to discover commands and configuration fields. If you
-installed with `go install`, use `lognav` instead of `./lognav`.
+Run `./bin/lognav` and complete the IAM browser/passcode prompt, or use
+`./bin/lognav login` first. See [the embedded setup guide](docs/README.md) and run
+`./bin/lognav --help` or `./bin/lognav config describe` to discover commands and
+configuration fields. If you installed with `go install`, use `lognav` instead of
+`./bin/lognav`.
 
 ## License
 
