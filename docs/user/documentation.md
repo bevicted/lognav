@@ -14,7 +14,6 @@ snapshots, and optional 1Password credentials.
 ## User pages
 
 - [Authentication](authentication.md)
-- [Archive background queries](archive.md)
 - [Dataprime reference](dataprime.md)
 - [Exit codes](exit-codes.md)
 - [Help and community](help.md)

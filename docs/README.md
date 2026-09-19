@@ -9,7 +9,6 @@ change before the first major release.
 - Parallel queries across IBM Cloud Logs instances
 - Dataprime queries, jq filtering, search, and a severity timeline
 - Local snapshots that can be saved, opened, and shared
-- Experimental ICL background queries and archive collection
 - Headless queries for scripts and agents
 - Browser/passcode login, API-key, and optional 1Password authentication
 

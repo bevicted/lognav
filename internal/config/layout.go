@@ -325,7 +325,7 @@ type Keys struct {
 	// specific
 	// last resort, prefer generic section
 
-	ArchiveDispatch  KeyBind `yaml:"archiveDispatch"  desc:"dispatch enabled instances' query as background (archive) queries"`
+	ArchiveDispatch  KeyBind `yaml:"archiveDispatch"  desc:"dispatch enabled instances' query to the archive"`
 	CancelAllFetches KeyBind `yaml:"cancelAllFetches" desc:"cancel all ongoing log fetches"`
 	CopyEntire       KeyBind `yaml:"copyEntire"       desc:"copy entire data under cursor"`
 	CopyValue        KeyBind `yaml:"copyValue"        desc:"copy value under cursor, fallback to entire"`
@@ -592,7 +592,7 @@ type Core struct {
 	WatchCooldownSeconds    uint16      `yaml:"watchCooldownSeconds"    desc:"seconds to wait between watch fetch rounds (anti-DoS throttle)"`
 	WatchMaxFetches         uint16      `yaml:"watchMaxFetches"         desc:"max watch fetch rounds including the first; 0 = unlimited"`
 	WatchMaxDurationSeconds uint16      `yaml:"watchMaxDurationSeconds" desc:"max total watch wall-clock seconds before stopping; 0 = unlimited"`
-	EnableExperimental      bool        `yaml:"enableExperimental"      desc:"enable experimental / opt-in features (currently: the archive background-query tab and fetch mode). Off by default."`
+	EnableExperimental      bool        `yaml:"enableExperimental"      desc:"enable experimental / opt-in features. Off by default."`
 }
 
 // RedrawInterval returns the bounded fetch-progress redraw cadence. Zero uses
