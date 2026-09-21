@@ -4,6 +4,8 @@
 searching IBM Cloud Logs. It supports parallel Dataprime queries, jq filtering,
 snapshots, and optional API-key or 1Password authentication.
 
+![lognav log viewer](docs/assets/lognav-preview.png)
+
 ## Install
 
 With Go:
