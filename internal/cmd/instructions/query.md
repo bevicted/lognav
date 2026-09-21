@@ -35,7 +35,7 @@ last 15m`, or a known bounded precise range such as `source logs between
    match; search a distinctive dash-free segment instead. Do not apply this
    workaround to labels; preserve the full label value. Do not add a Dataprime
    `limit`. Advanced operations such as aggregation belong in `lognav docs
-   dataprime --print`.
+dataprime --print`.
 4. Protect `$d` from shell expansion with a quoted heredoc, then send the query
    through stdin. Capture selector stdout before checking status because partial
    outcomes can retain a selector:
