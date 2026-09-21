@@ -108,7 +108,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	topic := &cobra.Command{
 		Use:   "config [command]",
 		Short: "Manage configuration",
-		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse user YAML overrides. Writes modify only the user file. `path`, `set`, `unset`, and `edit` remain available when config.yaml is missing or invalid.",
+		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides. Writes modify only `user.yaml`. `path`, `set`, `unset`, and `edit` remain available when user.yaml is missing or invalid.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -118,7 +118,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	show := &cobra.Command{
 		Use:     "show",
 		Short:   "Show the effective configuration",
-		Long:    "The output includes merged values, redacted secrets, and computed values, so it is display-only and cannot be edited or round-tripped as config.yaml.",
+		Long:    "The output includes merged values, redacted secrets, and computed values, so it is display-only and cannot be edited or round-tripped as user.yaml.",
 		Example: "  lognav config show\n  lognav config show -o json",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -257,7 +257,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	path := &cobra.Command{
 		Use:               "path",
 		Short:             "Print the configuration file path",
-		Long:              "Output is exactly one sparse editable user configuration file path and a newline, never the read-only package defaults path. The command does not load, validate, or create the file or its parent directory.",
+		Long:              "Output is exactly one sparse editable user.yaml path and a newline, never the read-only package defaults path. The command does not load, validate, or create the file or its parent directory.",
 		Example:           "  lognav config path",
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,

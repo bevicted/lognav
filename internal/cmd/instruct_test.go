@@ -91,7 +91,7 @@ func TestInstructCompletionReturnsExactTopics(t *testing.T) {
 func TestInstructBypassesMalformedConfig(t *testing.T) { //nolint:paralleltest // changes XDG_CONFIG_HOME
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
-	path := filepath.Join(xdgHome, "lognav", "config.yaml")
+	path := filepath.Join(xdgHome, "lognav", "user.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o700))
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\ncore:\n  enableMouse: not-a-bool\n"), 0o600))
 
@@ -132,6 +132,7 @@ func TestInstructContentContracts(t *testing.T) {
 	config, err := renderInstruction("config")
 	require.NoError(t, err)
 	assert.Contains(t, config, "lognav config path")
+	assert.Contains(t, config, "user.yaml")
 	assert.Contains(t, config, "exact prior bytes")
 	assert.Contains(t, config, "restore the exact prior bytes")
 	assert.Contains(t, config, "lognav config describe <dotted-key>")

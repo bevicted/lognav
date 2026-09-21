@@ -44,12 +44,39 @@ func TestLoadConfig_InvalidYAML_WrapsError(t *testing.T) {
 	// Cannot parallelize: shares XDG_CONFIG_HOME env var.
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "lognav"), 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "lognav", "config.yaml"), []byte("not: valid: yaml: ::: garbage"), 0o600))
+	p, err := config.GetConfigPath()
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o700))
+	require.NoError(t, os.WriteFile(p, []byte("not: valid: yaml: ::: garbage"), 0o600))
 
-	_, err := config.LoadConfig()
+	_, err = config.LoadConfig()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "load config:")
+}
+
+func TestLoadConfig_IgnoresLegacyConfigFile(t *testing.T) {
+	// Cannot parallelize: shares XDG_CONFIG_HOME env var.
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	legacyPath := filepath.Join(dir, "lognav", "config.yaml")
+	legacy := []byte("not: valid: yaml: ::: garbage\n")
+	require.NoError(t, os.MkdirAll(filepath.Dir(legacyPath), 0o700))
+	require.NoError(t, os.WriteFile(legacyPath, legacy, 0o600))
+
+	cfg, err := config.LoadConfig()
+	require.NoError(t, err)
+	assert.True(t, cfg.Core.EnableMouse)
+
+	userPath, err := config.GetConfigPath()
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(userPath, []byte("version: 1\ncore:\n  enableMouse: false\n"), 0o600))
+	cfg, err = config.LoadConfig()
+	require.NoError(t, err)
+	assert.False(t, cfg.Core.EnableMouse)
+
+	actualLegacy, err := os.ReadFile(legacyPath) // #nosec G304 -- test temp path
+	require.NoError(t, err)
+	assert.Equal(t, legacy, actualLegacy)
 }
 
 // A genuinely-unknown key (a typo) fails the strict load via
@@ -132,7 +159,7 @@ func TestLoadConfig_MissingHeaderLoadsWithoutRewrite(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "lognav"), 0o700))
-	cfgPath := filepath.Join(dir, "lognav", "config.yaml")
+	cfgPath := filepath.Join(dir, "lognav", "user.yaml")
 	original := []byte("icl:\n  instances: []\n")
 	require.NoError(t, os.WriteFile(cfgPath, original, 0o640)) //nolint:gosec // load must not alter an existing file.
 

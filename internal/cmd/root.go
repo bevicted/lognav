@@ -167,7 +167,7 @@ func newVersionCmd() *cobra.Command {
 	version := &cobra.Command{
 		Use:     "version",
 		Short:   "Print version information",
-		Long:    "Print the lognav binary version and the config and snapshot formats it supports. `lognav --version` and `lognav -v` print the text form without reading config.yaml.",
+		Long:    "Print the lognav binary version and the config and snapshot formats it supports. `lognav --version` and `lognav -v` print the text form without reading user.yaml.",
 		Example: "  lognav version\n  lognav version -o json",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -209,7 +209,7 @@ func newRootCmd(setupBundle func(noConfig bool) (deps.Bundle, error)) *cobra.Com
 	root := &cobra.Command{
 		Use:           build.Name + " [snapshot-name|path]",
 		Short:         build.Description,
-		Long:          build.Description + "\n\nLaunch the TUI when run without a command. Optionally open a managed snapshot name, `latest`, or an external .lognav path. An argument containing / or ending in .lognav is a path; otherwise it is a managed name. Use `lognav -- <name>` when a snapshot name conflicts with a subcommand.\n\n`--adopt` cannot be used with a name or `latest`, and fails rather than overwriting an existing snapshot. Use `snapshot adopt --force` to replace one.\n\n`instruct`, `docs`, `logout`, `version`, completion generation and installation, and config's `path`, `set`, `unset`, and `edit` remain available when config.yaml is invalid. `login` loads configured IAM discovery endpoints; use `--no-config` for public defaults.\n\nQuestions or feedback? https://github.com/bevicted/lognav",
+		Long:          build.Description + "\n\nLaunch the TUI when run without a command. Optionally open a managed snapshot name, `latest`, or an external .lognav path. An argument containing / or ending in .lognav is a path; otherwise it is a managed name. Use `lognav -- <name>` when a snapshot name conflicts with a subcommand.\n\n`--adopt` cannot be used with a name or `latest`, and fails rather than overwriting an existing snapshot. Use `snapshot adopt --force` to replace one.\n\n`instruct`, `docs`, `logout`, `version`, completion generation and installation, and config's `path`, `set`, `unset`, and `edit` remain available when user.yaml is invalid. `login` loads configured IAM discovery endpoints; use `--no-config` for public defaults.\n\nQuestions or feedback? https://github.com/bevicted/lognav",
 		Example:       "  lognav incident\n  lognav latest\n  lognav ~/Downloads/demo.lognav\n  lognav --adopt ~/Downloads/demo.lognav",
 		Args:          rootArgs,
 		SilenceUsage:  true,

@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	configFileName   = "config.yaml"
+	configFileName   = "user.yaml"
 	systemFileName   = "system.yaml"
 	userConfigName   = "user config"
 	systemConfigName = "system config"
@@ -76,7 +76,7 @@ func getSystemConfigPath() (string, error) {
 }
 
 // LoadConfig reads public defaults, optional stamped Homebrew defaults,
-// system.yaml, and config.yaml in that order. Neither file is changed while
+// system.yaml, and user.yaml in that order. Neither file is changed while
 // loading. Every error is wrapped with "load config:"; callers should not wrap
 // it again.
 func LoadConfig() (*Config, error) {

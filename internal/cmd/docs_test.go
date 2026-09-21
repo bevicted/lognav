@@ -268,7 +268,7 @@ func TestDocsCompletionUsesEmbeddedTopics(t *testing.T) {
 func TestDocsAliasCompletionBypassesMalformedConfig(t *testing.T) {
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)
-	configPath := filepath.Join(xdgHome, "lognav", "config.yaml")
+	configPath := filepath.Join(xdgHome, "lognav", "user.yaml")
 	require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0o700))
 	require.NoError(t, os.WriteFile(configPath, []byte("version: 1\ncore:\n  enableMouse: not-a-bool\n"), 0o600))
 

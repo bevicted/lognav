@@ -39,7 +39,7 @@ shell session after installation.
 
 Configure at least one IBM Cloud Logs instance before querying. `icl.instances`
 is a writable list; use `[]` when you intentionally want no instances. Save this
-at the path printed by `./bin/lognav config path`:
+in the `user.yaml` path printed by `./bin/lognav config path`:
 
 ```yaml
 version: 1
@@ -50,6 +50,11 @@ icl:
 ```
 
 Replace the placeholder CRN values with your IBM Cloud Logs instance values.
+
+Existing `config.yaml` files are not loaded or changed. If `user.yaml` does not
+exist, rename `config.yaml` manually. If both files exist, reconcile them
+manually without overwriting either file.
+
 An API key is not required: start lognav and use the IAM browser/passcode flow
 when prompted.
 

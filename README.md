@@ -25,8 +25,8 @@ go build -trimpath -o bin/lognav .
 
 ## Configure an instance
 
-lognav has no configured instances by default. Create the file printed by
-`./bin/lognav config path` and add an IBM Cloud Logs instance:
+lognav has no configured instances by default. Create the `user.yaml` file
+printed by `./bin/lognav config path` and add an IBM Cloud Logs instance:
 
 ```yaml
 version: 1
@@ -37,6 +37,11 @@ icl:
 ```
 
 Replace the placeholder CRN values with the instance's IBM Cloud Resource Name.
+
+Existing `config.yaml` files are not loaded or changed. If `user.yaml` does not
+exist, rename `config.yaml` manually. If both files exist, reconcile them
+manually without overwriting either file.
+
 Run `./bin/lognav` and complete the IAM browser/passcode prompt, or use
 `./bin/lognav login` first. See [the embedded setup guide](docs/README.md) and run
 `./bin/lognav --help` or `./bin/lognav config describe` to discover commands and

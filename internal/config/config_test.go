@@ -218,7 +218,7 @@ func TestSetConfig_RejectsUnsupportedVersion(t *testing.T) {
 func TestWriteConfigFile_SecuresExistingFile(t *testing.T) {
 	t.Parallel()
 
-	p := filepath.Join(t.TempDir(), "config.yaml")
+	p := filepath.Join(t.TempDir(), "user.yaml")
 	require.NoError(t, os.WriteFile(p, []byte("version: 1\n"), 0o644)) //nolint:gosec // verify remediation of an insecure existing mode.
 	require.NoError(t, os.Chmod(p, 0o644))                             //nolint:gosec // umask may have already restricted it.
 
@@ -317,10 +317,14 @@ func TestSetConfig_UnsetConfig_DiskRoundTrip(t *testing.T) {
 
 	p, err := GetConfigPath()
 	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, "lognav", "user.yaml"), p)
 	b, err := os.ReadFile(p) //nolint:gosec // test temp path
 	require.NoError(t, err)
 	assert.Contains(t, string(b), "enableMouse: false")
 	assert.Contains(t, string(b), "version:")
+	info, err := os.Stat(p)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 
 	// set a second field
 	require.NoError(t, SetConfig("logs.scrolloff", "9"))

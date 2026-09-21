@@ -12,15 +12,18 @@ is the running CLI: `lognav config describe`, `lognav config get`, and
 
 Configuration has four layers: public built-ins from `config.New()`, optional
 Homebrew defaults, optional `$XDG_CONFIG_HOME/lognav/system.yaml`, then
-`$XDG_CONFIG_HOME/lognav/config.yaml`. The XDG paths fall back to
+`$XDG_CONFIG_HOME/lognav/user.yaml`. The XDG paths fall back to
 `~/.config/lognav/`. Homebrew defaults use the generic
 `config.PackageConfigPath` string stamped with Go `-X`; ordinary builds leave
 it empty. All file layers are optional when missing, but a present layer must
 be readable and valid. Homebrew and system files are read-only. Mappings merge
 recursively while scalars and sequences replace lower values, so an omitted
 user list inherits and `[]` intentionally clears it. `config path` only
-resolves the sparse editable user path, never the Homebrew or system path; it
-does not create, read, or validate any file.
+resolves the sparse editable `user.yaml` path, never the Homebrew or system
+path; it does not create, read, or validate any file. Legacy `config.yaml` is
+not loaded, migrated, copied, removed, or rewritten. Users may rename it only
+when `user.yaml` does not exist; when both files exist, they must reconcile them
+manually without overwriting either file.
 
 The parser rejects unknown fields. Every loaded configuration is validated,
 including custom leaf decoders and the effective ICL instance set. Reject missing
@@ -64,8 +67,8 @@ from this metadata, including the writable `icl.instances` and
 
 ## Edits and defaults
 
-`config set` and `config unset` operate only on configurable leaves in the user
-file. They edit the YAML AST so comments, unrelated keys, and on-disk secret
+`config set` and `config unset` operate only on configurable leaves in
+`user.yaml`. They edit the YAML AST so comments, unrelated keys, and on-disk secret
 values survive. The proposed document is strictly parsed and validated against
 the Homebrew and system base before a secure write; neither reads nor edits
 write either lower file. `unset` removes only a user override, exposing an

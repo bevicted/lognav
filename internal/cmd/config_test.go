@@ -281,7 +281,7 @@ func TestConfigPath(t *testing.T) {
 	t.Run("XDG missing path does not load config or create files", func(t *testing.T) {
 		xdgHome := t.TempDir()
 		t.Setenv("XDG_CONFIG_HOME", xdgHome)
-		want := filepath.Join(xdgHome, "lognav", "config.yaml")
+		want := filepath.Join(xdgHome, "lognav", "user.yaml")
 
 		got, err := run(t, failingSetup())
 		require.NoError(t, err)
@@ -293,7 +293,7 @@ func TestConfigPath(t *testing.T) {
 	t.Run("invalid config is not loaded or changed", func(t *testing.T) {
 		xdgHome := t.TempDir()
 		t.Setenv("XDG_CONFIG_HOME", xdgHome)
-		want := filepath.Join(xdgHome, "lognav", "config.yaml")
+		want := filepath.Join(xdgHome, "lognav", "user.yaml")
 		invalid := []byte("version: 1\ncore:\n  enableMouse: not-a-bool\n")
 		require.NoError(t, os.MkdirAll(filepath.Dir(want), 0o700))
 		require.NoError(t, os.WriteFile(want, invalid, 0o600))
@@ -313,7 +313,7 @@ func TestConfigPath(t *testing.T) {
 
 		got, err := run(t, failingSetup())
 		require.NoError(t, err)
-		assert.Equal(t, filepath.Join(home, ".config", "lognav", "config.yaml")+"\n", got)
+		assert.Equal(t, filepath.Join(home, ".config", "lognav", "user.yaml")+"\n", got)
 	})
 
 	t.Run("extra argument is a usage error", func(t *testing.T) {
@@ -343,7 +343,7 @@ func TestConfigPath(t *testing.T) {
 		root.SetOut(&help)
 		root.SetErr(&bytes.Buffer{})
 		require.NoError(t, root.Execute())
-		assert.Contains(t, help.String(), "Output is exactly one sparse editable user configuration file path and a newline")
+		assert.Contains(t, help.String(), "Output is exactly one sparse editable user.yaml path and a newline")
 
 		root = newRootCmd(noopSetup(t))
 		var completion bytes.Buffer
