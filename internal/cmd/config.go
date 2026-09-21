@@ -3,8 +3,10 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/bevicted/lognav/internal/config"
 	"github.com/bevicted/lognav/internal/deps"
@@ -54,6 +56,46 @@ func yamlValue(value any) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+func renderConfigStatus(out io.Writer, report config.StatusReport) error {
+	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(table, "type\tstate\tkeys\tpath"); err != nil {
+		return err
+	}
+	for _, file := range report.Files {
+		keys := "-"
+		if file.Keys != nil {
+			keys = fmt.Sprint(*file.Keys)
+		}
+		filePath := "-"
+		if file.Path != nil {
+			filePath = *file.Path
+		}
+		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\n", file.Type, file.State, keys, filePath); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(table, "effective\t"+report.Effective.State+"\t-\t-"); err != nil {
+		return err
+	}
+	if err := table.Flush(); err != nil {
+		return err
+	}
+
+	for _, file := range report.Files {
+		for _, diagnostic := range file.Errors {
+			if _, err := fmt.Fprintf(out, "%s: %s\n", file.Type, diagnostic); err != nil {
+				return err
+			}
+		}
+	}
+	for _, diagnostic := range report.Effective.Errors {
+		if _, err := fmt.Fprintf(out, "effective: %s\n", diagnostic); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func completeReadableConfigKeys(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -108,7 +150,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	topic := &cobra.Command{
 		Use:   "config [command]",
 		Short: "Manage configuration",
-		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides. Writes modify only `user.yaml`. `path`, `set`, `unset`, and `edit` remain available when user.yaml is missing or invalid.",
+		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides. Writes modify only `user.yaml`. `status`, `set`, `unset`, and `edit` remain available when user.yaml is missing or invalid.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -254,22 +296,34 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 		},
 	}
 
-	path := &cobra.Command{
-		Use:               "path",
-		Short:             "Print the configuration file path",
-		Long:              "Output is exactly one sparse editable user.yaml path and a newline, never the read-only package defaults path. The command does not load, validate, or create the file or its parent directory.",
-		Example:           "  lognav config path",
+	status := &cobra.Command{
+		Use:               "status",
+		Short:             "Diagnose configuration file layers",
+		Long:              "Inspect Homebrew, system, and user configuration files without loading runtime services or changing files. Text output lists each file's sparse-layer state and explicit key count, then reports diagnostics; JSON keeps diagnostics in each record.",
+		Example:           "  lognav config status\n  lognav config status -o json",
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p, err := getConfigPath()
+			format, err := getOutputFormat(cmd)
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), p)
-			return err
+			report := config.InspectStatus()
+			if format == outputJSON {
+				err = writeJSON(cmd.OutOrStdout(), report)
+			} else {
+				err = renderConfigStatus(cmd.OutOrStdout(), report)
+			}
+			if err != nil {
+				return err
+			}
+			if report.HasErrors() {
+				return WithExit(ExitConfig, errors.New("configuration status found errors"))
+			}
+			return nil
 		},
 	}
+	addOutputFlag(status)
 
 	topic.AddCommand(
 		show,
@@ -277,7 +331,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 		describe,
 		set,
 		unset,
-		path,
+		status,
 		&cobra.Command{
 			Use:               "edit [flags]",
 			Short:             "Edit the configuration file",

@@ -131,7 +131,9 @@ func TestInstructContentContracts(t *testing.T) {
 
 	config, err := renderInstruction("config")
 	require.NoError(t, err)
-	assert.Contains(t, config, "lognav config path")
+	assert.Contains(t, config, "lognav config status -o json")
+	assert.Contains(t, config, "exit 78 while still writing the complete JSON report")
+	assert.Contains(t, config, "`user` object in `.files[]`")
 	assert.Contains(t, config, "user.yaml")
 	assert.Contains(t, config, "exact prior bytes")
 	assert.Contains(t, config, "restore the exact prior bytes")

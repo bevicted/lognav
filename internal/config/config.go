@@ -33,6 +33,8 @@ var ErrUnknownConfigurationKey = errors.New("unknown configuration key")
 // time with -ldflags -X. Ordinary builds leave it empty.
 var PackageConfigPath = ""
 
+var xdgConfigPath = xdg.GetConfigPath
+
 // New returns a Config populated with the lognav default values.
 // Tests use this directly; production code calls LoadConfig() which falls
 // back to New() when no file is found.
@@ -60,7 +62,7 @@ func NormalizeYAMLPath(arg string) string {
 }
 
 func GetConfigPath() (string, error) {
-	p, err := xdg.GetConfigPath()
+	p, err := xdgConfigPath()
 	if err != nil {
 		return "", fmt.Errorf("load config: resolve path: %w", err)
 	}
@@ -68,7 +70,7 @@ func GetConfigPath() (string, error) {
 }
 
 func getSystemConfigPath() (string, error) {
-	p, err := xdg.GetConfigPath()
+	p, err := xdgConfigPath()
 	if err != nil {
 		return "", fmt.Errorf("load config: resolve path: %w", err)
 	}
@@ -147,14 +149,7 @@ type configLayer struct {
 // configFromLayers validates each supplied layer before merging mappings
 // recursively. Scalars and sequences replace lower-layer values.
 func configFromLayers(layers ...configLayer) (*Config, error) {
-	base, err := yaml.Marshal(New())
-	if err != nil {
-		return nil, err
-	}
-	merged, err := configDocument(base)
-	if err != nil {
-		return nil, err
-	}
+	documents := make([]map[string]any, 0, len(layers))
 	for _, layer := range layers {
 		if len(bytes.TrimSpace(layer.bytes)) == 0 {
 			continue
@@ -166,9 +161,26 @@ func configFromLayers(layers ...configLayer) (*Config, error) {
 			}
 			return nil, fmt.Errorf("%s: %w", layer.name, err)
 		}
-		mergeConfigMappings(merged, document)
+		documents = append(documents, document)
 	}
 
+	return configFromDocuments(documents...)
+}
+
+// configFromDocuments merges already sparse-layer-validated mappings onto the
+// built-in defaults and runs final effective configuration validation.
+func configFromDocuments(documents ...map[string]any) (*Config, error) {
+	base, err := yaml.Marshal(New())
+	if err != nil {
+		return nil, err
+	}
+	merged, err := configDocument(base)
+	if err != nil {
+		return nil, err
+	}
+	for _, document := range documents {
+		mergeConfigMappings(merged, document)
+	}
 	b, err := yaml.Marshal(merged)
 	if err != nil {
 		return nil, err

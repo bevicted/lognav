@@ -74,7 +74,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 				"Use `lognav -- <name>` when a snapshot name conflicts with a subcommand.",
 				"`--adopt` cannot be used with a name or `latest`",
 				"fails rather than overwriting an existing snapshot.",
-				"config's `path`, `set`, `unset`, and `edit` remain available when user.yaml is invalid.",
+				"config's `status`, `set`, `unset`, and `edit` remain available when user.yaml is invalid.",
 				"lognav --adopt ~/Downloads/demo.lognav",
 			},
 		},
@@ -158,11 +158,11 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			},
 		},
 		{
-			name: "config path safe lookup",
-			args: []string{"config", "path"},
+			name: "config status diagnostics",
+			args: []string{"config", "status"},
 			want: []string{
-				"Output is exactly one sparse editable user.yaml path and a newline, never the read-only package defaults path.",
-				"does not load, validate, or create the file or its parent directory",
+				"Inspect Homebrew, system, and user configuration files without loading runtime services or changing files.",
+				"sparse-layer state and explicit key count",
 			},
 		},
 		{

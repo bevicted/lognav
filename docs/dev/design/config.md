@@ -18,9 +18,12 @@ Homebrew defaults, optional `$XDG_CONFIG_HOME/lognav/system.yaml`, then
 it empty. All file layers are optional when missing, but a present layer must
 be readable and valid. Homebrew and system files are read-only. Mappings merge
 recursively while scalars and sequences replace lower values, so an omitted
-user list inherits and `[]` intentionally clears it. `config path` only
-resolves the sparse editable `user.yaml` path, never the Homebrew or system
-path; it does not create, read, or validate any file. Legacy `config.yaml` is
+user list inherits and `[]` intentionally clears it. `config status` inspects
+all three file layers without changing them. Its text table orders `homebrew`,
+`system`, `user`, then `effective`, and its JSON form exposes the same ordered
+file records with `type`, `state`, `keys`, `path`, and `errors`. File state is
+`valid`, `missing`, or `error`; effective state is `valid` or `error`. The
+`user` JSON record is the authoritative editable path. Legacy `config.yaml` is
 not loaded, migrated, copied, removed, or rewritten. Users may rename it only
 when `user.yaml` does not exist; when both files exist, they must reconcile them
 manually without overwriting either file.
