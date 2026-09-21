@@ -65,6 +65,37 @@ func TestNewAccountManager(t *testing.T) {
 	assert.Empty(t, am.envs[Environment("test-cloud")].accessTokens)
 }
 
+func TestAPIKeyFromEnvironment(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{name: "unset", env: map[string]string{}, want: ""},
+		{name: "IBM Cloud variable", env: map[string]string{"IC_API_KEY": "standard-key"}, want: "standard-key"},
+		{name: "legacy variable", env: map[string]string{"LOGNAV_IC_API_KEY": "legacy-key"}, want: "legacy-key"},
+		{
+			name: "IBM Cloud variable takes precedence",
+			env:  map[string]string{"IC_API_KEY": "standard-key", "LOGNAV_IC_API_KEY": "legacy-key"},
+			want: "standard-key",
+		},
+		{
+			name: "empty IBM Cloud variable falls back to legacy",
+			env:  map[string]string{"IC_API_KEY": "", "LOGNAV_IC_API_KEY": "legacy-key"},
+			want: "legacy-key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, APIKeyFromEnvironment(func(name string) string { return tt.env[name] }))
+		})
+	}
+}
+
 func TestQueryOIDCConfig_InvalidURL(t *testing.T) {
 	_, err := queryOIDCConfig(t.Context(), "http://localhost:1/nonexistent")
 	if err == nil {

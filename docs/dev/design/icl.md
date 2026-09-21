@@ -39,7 +39,8 @@ An `AccountManager` resolves credentials independently for every configured
 full CRN. A usable cached access token for that account is returned first.
 Otherwise, a persisted refresh token is tried before the configured API key and
 1Password API-key reference. Production `bluemix` alone may be overridden by
-`LOGNAV_IC_API_KEY`.
+`IC_API_KEY`; the legacy `LOGNAV_IC_API_KEY` alias remains supported, with lower
+precedence.
 
 Refresh exchanges omit the optional IAM `account` form field, matching IBM's
 SDK refresh flow; the resulting access token is still cached under the target

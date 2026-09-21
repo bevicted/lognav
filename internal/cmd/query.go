@@ -724,13 +724,13 @@ func queryMembersError(members []queryMember) error {
 }
 
 func apiKeyFromEnv(configKey string) string {
-	if key := os.Getenv("LOGNAV_IC_API_KEY"); key != "" {
+	if key := icl.APIKeyFromEnvironment(os.Getenv); key != "" {
 		return key
 	}
 	return configKey
 }
 
-// queryEnvironments copies configured IAM records and applies the legacy
+// queryEnvironments copies configured IAM records and applies the
 // production-only environment override without affecting other environments.
 func queryEnvironments(cfg *config.Config) map[string]config.ICLEnvironmentConfig {
 	environments := maps.Clone(cfg.ICL.Environments)

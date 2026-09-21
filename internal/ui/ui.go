@@ -579,7 +579,7 @@ func (m *Model) loadSnapshot(path string) {
 // the old environment event arm). It picks up the ICL API key so a remote-session
 // environment (e.g. SSH) reaches the config and the instance picker.
 func (m *Model) ApplyEnv(env []string) {
-	if v := uv.Environ(env).Getenv("LOGNAV_IC_API_KEY"); v != "" {
+	if v := icl.APIKeyFromEnvironment(uv.Environ(env).Getenv); v != "" {
 		m.logger.Debug("set production config api key via env", "secret length", len(v))
 		if production, ok := m.bundle.Config.ICL.Environments[string(icl.EnvProd)]; ok {
 			production.APIKey = v
