@@ -21,15 +21,21 @@ json`, select the matching targets, and pass each with repeatable
    request. Strongly recommend an explicit range because omitting it delegates
    the range to API-level defaults. Use a relative range such as `source logs
 last 15m`, or a known bounded precise range such as `source logs between
-@'2025-01-02T00:00:00Z' and @'2025-01-02T01:00:00Z'`. Put one pipe operator
-   on each line for readability, not because the parser requires it. Dataprime
-   strings use single quotes.
-3. Use `$m` for metadata, `$l` for labels, and `$d` for data. Never infer or
-   invent a field name from a natural-language label. If a field is unknown,
-   use `$d ~~ 'text'`; use `field ~ 'text'` only when that field is grounded in
-   the user's query, `lognav docs dataprime --print`, or observed evidence. Do
-   not add a Dataprime `limit`. Advanced operations such as aggregation belong
-   in `lognav docs dataprime --print`.
+@'2025-01-02T00:00:00Z' and @'2025-01-02T01:00:00Z'`; known bounded ranges are
+   more efficient than broad relative ranges. Put one pipe operator on each line
+   for readability, not because the parser requires it. Dataprime strings use
+   single quotes.
+3. Use `$m` for metadata, `$l` for labels, and `$d` for data. When the user names
+   an app, service, or system that produces the logs, filter the full name with
+   `| f $l.subsystemname == 'service'`. Use documented payload access `$d.log`.
+   Never infer or invent a field name from a natural-language label. If a user
+   data field is unknown, use `$d ~~ 'text'`; use `field ~ 'text'` only when that
+   field is grounded in the user's query, `lognav docs dataprime --print`, or
+   observed evidence. For a dashed value in `$d`, ICL can omit a complete-value
+   match; search a distinctive dash-free segment instead. Do not apply this
+   workaround to labels; preserve the full label value. Do not add a Dataprime
+   `limit`. Advanced operations such as aggregation belong in `lognav docs
+   dataprime --print`.
 4. Protect `$d` from shell expansion with a quoted heredoc, then send the query
    through stdin. Capture selector stdout before checking status because partial
    outcomes can retain a selector:
