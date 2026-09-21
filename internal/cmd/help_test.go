@@ -111,7 +111,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			name: "config behavior",
 			args: []string{"config"},
 			want: []string{
-				"Configuration reads merge public defaults, optional read-only package defaults, and sparse user YAML overrides.",
+				"Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse user YAML overrides.",
 				"remain available when config.yaml is missing or invalid.",
 			},
 		},
@@ -152,7 +152,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			name: "config unset defaults",
 			args: []string{"config", "unset"},
 			want: []string{
-				"inherited package or public default applies afterward.",
+				"inherited system, Homebrew, or public default applies afterward.",
 				"An absent field is a no-op.",
 				"An invalid value can be removed from an otherwise invalid file",
 			},

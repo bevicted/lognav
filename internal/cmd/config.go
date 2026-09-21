@@ -108,7 +108,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	topic := &cobra.Command{
 		Use:   "config [command]",
 		Short: "Manage configuration",
-		Long:  "Configuration reads merge public defaults, optional read-only package defaults, and sparse user YAML overrides. Writes modify only the user file. `path`, `set`, `unset`, and `edit` remain available when config.yaml is missing or invalid.",
+		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse user YAML overrides. Writes modify only the user file. `path`, `set`, `unset`, and `edit` remain available when config.yaml is missing or invalid.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -240,7 +240,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	unset := &cobra.Command{
 		Use:               "unset <yamlpath>",
 		Short:             "Unset a configuration value",
-		Long:              "The inherited package or public default applies afterward. A leading $ on the key is optional. An absent field is a no-op. An invalid value can be removed from an otherwise invalid file, but the resulting complete document must validate.",
+		Long:              "The inherited system, Homebrew, or public default applies afterward. A leading $ on the key is optional. An absent field is a no-op. An invalid value can be removed from an otherwise invalid file, but the resulting complete document must validate.",
 		Example:           "  lognav config unset core.redrawIntervalMs",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWritableConfigKeys,

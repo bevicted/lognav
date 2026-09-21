@@ -10,14 +10,17 @@ is the running CLI: `lognav config describe`, `lognav config get`, and
 
 ## Loading and validation
 
-Configuration has three layers: public built-ins from `config.New()`, an
-optional package defaults file, then `$XDG_CONFIG_HOME/lognav/config.yaml`.
-The package path is the generic `config.PackageConfigPath` string stamped with
-Go `-X`; ordinary builds leave it empty. A nonempty path must be readable and
-valid, but is always read-only. Mappings merge recursively while scalars and
-sequences replace lower values, so an omitted user list inherits and `[]`
-intentionally clears it. `config path` only resolves the sparse editable user
-path, not the package path; it does not create, read, or validate either file.
+Configuration has four layers: public built-ins from `config.New()`, optional
+Homebrew defaults, optional `$XDG_CONFIG_HOME/lognav/system.yaml`, then
+`$XDG_CONFIG_HOME/lognav/config.yaml`. The XDG paths fall back to
+`~/.config/lognav/`. Homebrew defaults use the generic
+`config.PackageConfigPath` string stamped with Go `-X`; ordinary builds leave
+it empty. All file layers are optional when missing, but a present layer must
+be readable and valid. Homebrew and system files are read-only. Mappings merge
+recursively while scalars and sequences replace lower values, so an omitted
+user list inherits and `[]` intentionally clears it. `config path` only
+resolves the sparse editable user path, never the Homebrew or system path; it
+does not create, read, or validate any file.
 
 The parser rejects unknown fields. Every loaded configuration is validated,
 including custom leaf decoders and the effective ICL instance set. Reject missing
@@ -64,9 +67,9 @@ from this metadata, including the writable `icl.instances` and
 `config set` and `config unset` operate only on configurable leaves in the user
 file. They edit the YAML AST so comments, unrelated keys, and on-disk secret
 values survive. The proposed document is strictly parsed and validated against
-the package base before a secure write; neither reads nor edits write the
-package file. `unset` removes only a user override, exposing an inherited
-package or public value. `instances: null` is invalid; use `[]` for no
+the Homebrew and system base before a secure write; neither reads nor edits
+write either lower file. `unset` removes only a user override, exposing an
+inherited system, Homebrew, or public value. `instances: null` is invalid; use `[]` for no
 instances. This edit path intentionally works even when the old target value
 makes a full runtime load fail, so it can be repaired.
 

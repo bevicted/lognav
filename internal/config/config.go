@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	configFileName = "config.yaml"
-	userConfigName = "user config"
-	CurrentVersion = 1
+	configFileName   = "config.yaml"
+	systemFileName   = "system.yaml"
+	userConfigName   = "user config"
+	systemConfigName = "system config"
+	CurrentVersion   = 1
 )
 
 // ErrUnknownConfigurationKey reports that a valid dotted key does not exist in
@@ -65,10 +67,18 @@ func GetConfigPath() (string, error) {
 	return path.Join(p, configFileName), nil
 }
 
-// LoadConfig reads public defaults, the optional stamped package defaults, and
-// $XDG_CONFIG_HOME/lognav/config.yaml in that order. Neither file is changed
-// while loading. Every error is wrapped with "load config:"; callers should
-// not wrap it again.
+func getSystemConfigPath() (string, error) {
+	p, err := xdg.GetConfigPath()
+	if err != nil {
+		return "", fmt.Errorf("load config: resolve path: %w", err)
+	}
+	return path.Join(p, systemFileName), nil
+}
+
+// LoadConfig reads public defaults, optional stamped Homebrew defaults,
+// system.yaml, and config.yaml in that order. Neither file is changed while
+// loading. Every error is wrapped with "load config:"; callers should not wrap
+// it again.
 func LoadConfig() (*Config, error) {
 	logger := slog.Default().With(logging.KeyComponent, "config")
 	start := time.Now()
@@ -77,21 +87,26 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-
+	systemPath, err := getSystemConfigPath()
+	if err != nil {
+		return nil, err // already wrapped
+	}
+	systemBytes, err := readOptionalConfigFile(systemPath, systemConfigName)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
 	p, err := GetConfigPath()
 	if err != nil {
 		return nil, err // already wrapped
 	}
-	userBytes, err := os.ReadFile(p) // #nosec G304 -- xdg-resolved config path; not user-influenced
-	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("load config: read %s %s: %w", userConfigName, p, err)
-	}
-	if os.IsNotExist(err) {
-		userBytes = nil
+	userBytes, err := readOptionalConfigFile(p, userConfigName)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
 	}
 
 	cfg, err := configFromLayers(
 		configLayer{name: "package defaults", bytes: packageBytes},
+		configLayer{name: systemConfigName, bytes: systemBytes},
 		configLayer{name: userConfigName, bytes: userBytes},
 	)
 	if err != nil {
@@ -106,11 +121,22 @@ func readPackageConfig() ([]byte, error) {
 	if PackageConfigPath == "" {
 		return nil, nil
 	}
-	b, err := os.ReadFile(PackageConfigPath) // #nosec G304 -- build-stamped package path
+	b, err := readOptionalConfigFile(PackageConfigPath, "package defaults")
 	if err != nil {
-		return nil, fmt.Errorf("read package defaults %s: %w", PackageConfigPath, err)
+		return nil, err
 	}
 	return b, nil
+}
+
+func readOptionalConfigFile(p, name string) ([]byte, error) {
+	b, err := os.ReadFile(p) // #nosec G304 -- build-stamped or xdg-resolved config path
+	if err == nil {
+		return b, nil
+	}
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return nil, fmt.Errorf("read %s %s: %w", name, p, err)
 }
 
 type configLayer struct {
@@ -613,8 +639,8 @@ func setValueError(leaf FieldMeta, parsed any, norm string, err error) error {
 }
 
 // SetConfig applies an AST edit to the sparse user file and validates the
-// proposed document against public defaults and the optional package layer.
-// A missing file is created with the current version header.
+// proposed document against public defaults and the optional Homebrew and
+// system layers. A missing file is created with the current version header.
 func SetConfig(yamlPath, value string) error {
 	p, err := GetConfigPath()
 	if err != nil {
@@ -635,8 +661,17 @@ func SetConfig(yamlPath, value string) error {
 	if err != nil {
 		return err
 	}
+	systemPath, err := getSystemConfigPath()
+	if err != nil {
+		return err
+	}
+	systemBytes, err := readOptionalConfigFile(systemPath, systemConfigName)
+	if err != nil {
+		return err
+	}
 	if _, err := configFromLayers(
 		configLayer{name: "package defaults", bytes: packageBytes},
+		configLayer{name: systemConfigName, bytes: systemBytes},
 		configLayer{name: userConfigName, bytes: out},
 	); err != nil {
 		return setValueError(leaf, parsed, norm, err)
@@ -645,7 +680,7 @@ func SetConfig(yamlPath, value string) error {
 }
 
 // UnsetConfig removes one user override and validates the proposed document
-// against its package base. A missing user file is a no-op success.
+// against its Homebrew and system base. A missing user file is a no-op success.
 func UnsetConfig(yamlPath string) error {
 	p, err := GetConfigPath()
 	if err != nil {
@@ -666,8 +701,17 @@ func UnsetConfig(yamlPath string) error {
 	if err != nil {
 		return err
 	}
+	systemPath, err := getSystemConfigPath()
+	if err != nil {
+		return err
+	}
+	systemBytes, err := readOptionalConfigFile(systemPath, systemConfigName)
+	if err != nil {
+		return err
+	}
 	if _, err := configFromLayers(
 		configLayer{name: "package defaults", bytes: packageBytes},
+		configLayer{name: systemConfigName, bytes: systemBytes},
 		configLayer{name: userConfigName, bytes: out},
 	); err != nil {
 		return fmt.Errorf("unset %q produced invalid config: %w", norm, err)
