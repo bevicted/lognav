@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -66,7 +67,7 @@ func renderConfigStatus(out io.Writer, report config.StatusReport) error {
 	for _, file := range report.Files {
 		keys := "-"
 		if file.Keys != nil {
-			keys = fmt.Sprint(*file.Keys)
+			keys = strconv.Itoa(*file.Keys)
 		}
 		filePath := "-"
 		if file.Path != nil {

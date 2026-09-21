@@ -135,7 +135,7 @@ func TestLoadConfig_AbsentAndEmptyLayersAreOptional(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, CurrentVersion, cfg.Version)
 	_, err = os.Stat(filepath.Join(xdgHome, "lognav"))
-	assert.ErrorIs(t, err, os.ErrNotExist, "normal reads must not create the config directory")
+	require.ErrorIs(t, err, os.ErrNotExist, "normal reads must not create the config directory")
 
 	usePackageConfig(t, " \n\t")
 	writeSystemConfig(t, "\n")
