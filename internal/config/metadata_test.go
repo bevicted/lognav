@@ -108,7 +108,7 @@ func TestGetFieldMetadataCore(t *testing.T) {
 		fieldKeys[m.YAMLKey] = true
 	}
 
-	expected := []string{"showKeyHints", "extraSnippets", "includeDefaultSnippets", "includeSnippetsInEditor", "maxAutoSnapshots", "maxLogFiles", "enableMouse", "enableHover", "doubleClickMs", "scrollAxisLockMs", "wheelScrollLines", "redrawIntervalMs", "saveSnapshotOnFetchDone", "notifyOnFetchDone", "notifyStyle", "watchCooldownSeconds", "watchMaxFetches", "watchMaxDurationSeconds", "enableExperimental"}
+	expected := []string{"showKeyHints", "extraSnippets", "includeDefaultSnippets", "includeSnippetsInEditor", "maxAutoSnapshots", "maxLogFiles", "enableMouse", "enableHover", "openBrowser", "doubleClickMs", "scrollAxisLockMs", "wheelScrollLines", "redrawIntervalMs", "saveSnapshotOnFetchDone", "notifyOnFetchDone", "notifyStyle", "watchCooldownSeconds", "watchMaxFetches", "watchMaxDurationSeconds", "enableExperimental"}
 	for _, key := range expected {
 		if !fieldKeys[key] {
 			t.Errorf("expected core field %q not found", key)

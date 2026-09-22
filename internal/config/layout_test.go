@@ -19,6 +19,11 @@ func TestNewConfig_ShowKeyHintsDefaultsOn(t *testing.T) {
 	assert.True(t, newConfig().Core.ShowKeyHints)
 }
 
+func TestNewConfig_OpenBrowserDefaultsOn(t *testing.T) {
+	t.Parallel()
+	assert.True(t, newConfig().Core.OpenBrowser)
+}
+
 func TestNewConfig_RetiredStatusRowFieldsAreAbsent(t *testing.T) {
 	t.Parallel()
 

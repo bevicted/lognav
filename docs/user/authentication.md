@@ -18,8 +18,10 @@ For an instance account, lognav uses the first available source in this order:
 If IAM rejects a saved refresh token, lognav clears it and continues to a
 configured API key or 1Password reference. A configured credential
 lookup/exchange failure is returned as an error. When no configured credential
-remains, the TUI asks for a passcode; the headless `lognav query` command
-returns an authentication-required error and does not prompt.
+remains, the TUI opens the passcode URL in the default browser and asks for the
+passcode. Set `core.openBrowser: false` to keep the URL in the dialog without
+opening it. The headless `lognav query` command returns an
+authentication-required error and does not prompt.
 
 Access tokens are cached per account. A refresh token is shared by accounts in
 the same environment.
@@ -48,8 +50,9 @@ command arguments.
 
 Run `lognav login` for the browser/passcode flow. It uses terminal stdin,
 prints the passcode URL, and reads the pasted passcode without echo. It does
-not use configured API keys, 1Password, or an IBM Cloud CLI session. See
-`lognav login --help` for environment selection and browser options.
+not use configured API keys, 1Password, or an IBM Cloud CLI session. It opens
+the URL when `core.openBrowser` is enabled, which is the default; `--no-open`
+overrides that setting. See `lognav login --help` for environment selection.
 
 A successful passcode exchange stores a refresh token in plaintext
 `$XDG_STATE_HOME/lognav/session.json` (normally

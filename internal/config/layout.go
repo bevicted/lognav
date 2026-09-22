@@ -250,6 +250,7 @@ func newConfig() *Config {
 			MaxLogFiles:             10,
 			EnableMouse:             true,
 			EnableHover:             true,
+			OpenBrowser:             true,
 			DoubleClickMs:           400,
 			ScrollAxisLockMs:        150,
 			WheelScrollLines:        5,
@@ -581,6 +582,7 @@ type Core struct {
 	MaxLogFiles             uint8       `yaml:"maxLogFiles"             desc:"max number of log files to retain in the state directory"`
 	EnableMouse             bool        `yaml:"enableMouse"             desc:"enable mouse support"`
 	EnableHover             bool        `yaml:"enableHover"             desc:"route mouse-motion events to highlight what is under the pointer: tint the log/list row and timeline bucket (style.hoverRowBg), move the dialog-button selection, and highlight the hovered tab on the tab bar (requires enableMouse; on by default)"`
+	OpenBrowser             bool        `yaml:"openBrowser"             desc:"automatically open the IAM passcode URL in the default browser for TUI fetches and lognav login; --no-open still disables it for login"`
 	DoubleClickMs           uint16      `yaml:"doubleClickMs"           desc:"double-press detection window in milliseconds; two left-clicks on the same cell within this window activate the row (expand log / open instance / load snapshot), and two ctrl+c presses exit lognav. 0 disables double-click (mouse selects only; keyboard still activates) but ctrl+c keeps the 400ms default so lognav can always be quit. Non-zero values are clamped to [50, 2000]"`
 	ScrollAxisLockMs        uint16      `yaml:"scrollAxisLockMs"        desc:"mouse-wheel axis lock window in milliseconds: within a continuous scroll gesture (including macOS momentum/inertial events) the wheel is locked to one axis, biased toward vertical, so a diagonal touchpad swipe scrolls vertically unless horizontal motion clearly dominates; sustained counter-axis scrolling reclaims control even mid-momentum. The lock resets after this many ms of scroll inactivity (0 disables locking, allowing mixed diagonal scroll)"`
 	WheelScrollLines        uint16      `yaml:"wheelScrollLines"        desc:"number of rows a vertical mouse-wheel notch pans the viewport (log viewer and list panes scroll the view, not the cursor; the cursor/selection rides its line and is only dragged once it reaches the scroll margin). 0 uses the default of 5"`

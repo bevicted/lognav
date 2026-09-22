@@ -55,7 +55,7 @@ func TestPasscodeDialog_PlainURL_NoANSIEscapes(t *testing.T) {
 	pr := icl.NewPasscodeRequired(url, icl.EnvProd)
 	f := &fakePoster{} // runs Go inline, records PostCritical
 	// am is unused by this test (it never clicks OK), but the signature needs it.
-	passcodeDialogCmd(t.Context(), f, testAccountManager(), pr)
+	passcodeDialogCmd(t.Context(), f, testAccountManager(), pr, false, nil)
 
 	var dlg msgs.ShowDialogMsg
 	var found bool
@@ -70,6 +70,36 @@ func TestPasscodeDialog_PlainURL_NoANSIEscapes(t *testing.T) {
 		"dialog Message must contain no ANSI escape bytes (cell-native dialog renders them literally)")
 	assert.Equal(t, url, dlg.LinkURL,
 		"LinkURL must mark the URL line so the dialog renders it as a colored hyperlink")
+}
+
+func TestPasscodeDialog_OpenBrowserSetting(t *testing.T) {
+	t.Parallel()
+	const url = "https://example.invalid/passcode"
+
+	for _, tt := range []struct {
+		name    string
+		enabled bool
+		want    int
+	}{
+		{name: "enabled", enabled: true, want: 1},
+		{name: "disabled", enabled: false, want: 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			opened := 0
+			opener := func(context.Context, string) error {
+				opened++
+				return nil
+			}
+			bundle := depstest.NewTest(t)
+			bundle.Config.Core.OpenBrowser = tt.enabled
+			m := New(t.Context(), bundle)
+			m.poster = &fakePoster{}
+			m.openBrowser = opener
+			m.OnPasscodeRequired(PasscodeRequiredMsg{Pr: icl.NewPasscodeRequired(url, icl.EnvProd)})
+			assert.Equal(t, tt.want, opened)
+		})
+	}
 }
 
 // TestInstanceUpdateStateTransitions covers the chunk/done error and warning
