@@ -35,10 +35,9 @@ and [service ID API keys](https://cloud.ibm.com/docs/iam?topic=iam-serviceidapik
 Service ID API keys inherit the service ID's access instead.
 
 `IC_API_KEY` overrides the configured API key only for the production `bluemix`
-environment. `LOGNAV_IC_API_KEY` remains supported as a legacy alias. When both
-are set, `IC_API_KEY` takes precedence. Configure API keys and 1Password
-references in the matching `icl.environments` entry. Use
-`lognav config describe icl.environments` for field details.
+environment. Configure API keys and 1Password references in the matching
+`icl.environments` entry. Use `lognav config describe icl.environments` for field
+details.
 
 > Agents must never ask users to paste API keys, access tokens, refresh tokens, or passcodes.
 

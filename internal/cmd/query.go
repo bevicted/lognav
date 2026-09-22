@@ -724,7 +724,7 @@ func queryMembersError(members []queryMember) error {
 }
 
 func apiKeyFromEnv(configKey string) string {
-	if key := icl.APIKeyFromEnvironment(os.Getenv); key != "" {
+	if key := os.Getenv("IC_API_KEY"); key != "" {
 		return key
 	}
 	return configKey

@@ -32,8 +32,8 @@ import (
 type Environment string
 
 const (
-	// EnvProd is the public production environment. IC_API_KEY and its legacy
-	// LOGNAV_IC_API_KEY alias only override credentials for this environment.
+	// EnvProd is the public production environment. IC_API_KEY only overrides
+	// credentials for this environment.
 	EnvProd Environment = "bluemix"
 
 	// bxbxAuth is base64("bx:bx") — the IBM Cloud public client credentials
@@ -586,15 +586,6 @@ func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, all
 		return "", err
 	}
 	return "", NewPasscodeRequired(oidcCfg.PasscodeEndpoint, env)
-}
-
-// APIKeyFromEnvironment returns the production API-key override. IC_API_KEY
-// takes precedence over the legacy LOGNAV_IC_API_KEY alias.
-func APIKeyFromEnvironment(getenv func(string) string) string {
-	if key := getenv("IC_API_KEY"); key != "" {
-		return key
-	}
-	return getenv("LOGNAV_IC_API_KEY")
 }
 
 // SetAPIKey updates the API key for an environment at runtime.

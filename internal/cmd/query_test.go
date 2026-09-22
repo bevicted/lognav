@@ -1302,29 +1302,6 @@ func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //noli
 			},
 		},
 		{
-			name: "legacy environment API key remains supported",
-			configure: func(t *testing.T, _ *config.Config) {
-				t.Setenv("LOGNAV_IC_API_KEY", "legacy-environment-key")
-			},
-			wantGrant:  "urn:ibm:params:oauth:grant-type:apikey",
-			wantAPIKey: "legacy-environment-key",
-			wantSession: map[icl.Environment]string{
-				icl.EnvProd: "rotated-refresh",
-			},
-		},
-		{
-			name: "IBM Cloud environment API key takes precedence over legacy",
-			configure: func(t *testing.T, _ *config.Config) {
-				t.Setenv("IC_API_KEY", "standard-environment-key")
-				t.Setenv("LOGNAV_IC_API_KEY", "legacy-environment-key")
-			},
-			wantGrant:  "urn:ibm:params:oauth:grant-type:apikey",
-			wantAPIKey: "standard-environment-key",
-			wantSession: map[icl.Environment]string{
-				icl.EnvProd: "rotated-refresh",
-			},
-		},
-		{
 			name: "1Password API key",
 			configure: func(t *testing.T, cfg *config.Config) {
 				setQueryEnvironmentCredentials(cfg, "bluemix", "", "")
@@ -1526,7 +1503,6 @@ func TestExecute_QuerySignalCancellation(t *testing.T) { //nolint:paralleltest /
 					"LOGNAV_QUERY_SIGNAL_HELPER="+phase,
 					"LOGNAV_QUERY_SIGNAL_READY="+ready,
 					"IC_API_KEY=",
-					"LOGNAV_IC_API_KEY=",
 					"XDG_DATA_HOME="+dataHome,
 					"XDG_STATE_HOME="+t.TempDir(),
 					"XDG_CONFIG_HOME="+t.TempDir(),
@@ -1627,7 +1603,6 @@ func runQueryCommand(t *testing.T, cfg *config.Config, input string, args ...str
 func setQueryTestXDG(t *testing.T) {
 	t.Helper()
 	t.Setenv("IC_API_KEY", "")
-	t.Setenv("LOGNAV_IC_API_KEY", "")
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

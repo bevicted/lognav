@@ -79,32 +79,14 @@ func TestUIModel_Close_Idempotent(t *testing.T) {
 }
 
 func TestModel_ApplyEnvAPIKey(t *testing.T) {
-	tests := []struct {
-		name string
-		env  []string
-		want string
-	}{
-		{name: "IBM Cloud variable", env: []string{"IC_API_KEY=standard-key"}, want: "standard-key"},
-		{name: "legacy variable", env: []string{"LOGNAV_IC_API_KEY=legacy-key"}, want: "legacy-key"},
-		{
-			name: "IBM Cloud variable takes precedence",
-			env:  []string{"LOGNAV_IC_API_KEY=legacy-key", "IC_API_KEY=standard-key"},
-			want: "standard-key",
-		},
-	}
+	bundle := depstest.NewTest(t)
+	m, err := New(t.Context(), bundle)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, m.Close()) })
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			bundle := depstest.NewTest(t)
-			m, err := New(t.Context(), bundle)
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, m.Close()) })
+	m.ApplyEnv([]string{"IC_API_KEY=environment-key"})
 
-			m.ApplyEnv(tt.env)
-
-			assert.Equal(t, tt.want, bundle.Config.ICL.Environments["bluemix"].APIKey)
-		})
-	}
+	assert.Equal(t, "environment-key", bundle.Config.ICL.Environments["bluemix"].APIKey)
 }
 
 func TestModel_DrawTo_ReturnsNilOnEmptySize(t *testing.T) {
