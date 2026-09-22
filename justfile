@@ -47,8 +47,12 @@ lint:
 lint-fix:
     golangci-lint run --fix ./...
 
+# Check reachable Go vulnerabilities, every required Go module (including
+# build-tagged tools), and locked Bun dependencies.
 vuln:
     govulncheck ./...
+    govulncheck -scan=module
+    bun audit
 
 # --- Tests & coverage ---
 
