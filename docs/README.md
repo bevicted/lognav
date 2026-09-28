@@ -33,7 +33,6 @@ is a writable list; use `[]` when you intentionally want no instances. Run
 save this configuration there:
 
 ```yaml
-version: 1
 icl:
   instances:
     - name: production
