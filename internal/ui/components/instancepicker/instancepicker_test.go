@@ -1026,6 +1026,97 @@ func TestOnEnvCredFailed_DoesNotTouchOtherEnv(t *testing.T) {
 	assert.Equal(t, "unrelated failure", stage.Store.GetMessage(), "staging message remains untouched")
 }
 
+func TestResolverEnvCredentialFailureStoresSourceAndSuccessfulRetryClearsIt(t *testing.T) {
+	const (
+		source = "LOGNAV_PICKER_TEST_API_KEY"
+		key    = "synthetic-picker-environment-key"
+	)
+	reject := true
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, key, r.Form.Get("apikey"))
+		if reject {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"synthetic-access-token","expires_in":3600}`))
+	}))
+	defer iam.Close()
+
+	inst := newTestInstanceEnv(t, "prod", icl.EnvProd)
+	inst.Enable()
+	insts := Instances{inst}
+	am := testAccountManagerWithAPIKey("configured-key")
+	am.SetOIDCForTest(icl.EnvProd, iam.URL)
+	am.SetAPIKey(icl.EnvProd, key, source)
+	poster := &fakePoster{}
+	insts.ResolveTokens(t.Context(), 0, am, "source logs", poster)
+
+	events := poster.events()
+	require.Len(t, events, 1)
+	failure, ok := events[0].(EnvCredFailedMsg)
+	require.True(t, ok)
+	assert.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_TEST_API_KEY" token exchange failed`)
+	assert.Contains(t, failure.Err.Error(), "BXNIM0401E: API key rejected")
+	assert.NotContains(t, failure.Err.Error(), key)
+
+	m := New(t.Context(), depstest.NewTest(t))
+	m.instances = insts
+	m.OnEnvCredFailed(failure)
+	assert.Equal(t, status.Error, inst.state)
+	assert.Equal(t, failure.Err.Error(), inst.Store.GetMessage())
+
+	reject = false
+	inst.Enable()
+	insts.ResolveTokens(t.Context(), 0, am, "source logs", poster)
+	assert.Empty(t, inst.Store.GetMessage(), "retry must clear the annotated authentication error")
+	events = poster.events()
+	require.Len(t, events, 2)
+	_, ok = events[1].(MemberAuthResolvedMsg)
+	assert.True(t, ok, "successful retry must resolve the member")
+}
+
+func TestResolverEnvCredentialDiscoveryFailureStoresSource(t *testing.T) {
+	const (
+		source = "LOGNAV_PICKER_DISCOVERY_API_KEY"
+		key    = "synthetic-picker-discovery-key"
+	)
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/.well-known/openid-configuration", r.URL.Path)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("local discovery failed"))
+	}))
+	defer iam.Close()
+
+	environments := config.New().ICL.Environments
+	production := environments[string(icl.EnvProd)]
+	production.IAMURL = iam.URL
+	production.APIKey = ""
+	environments[string(icl.EnvProd)] = production
+	am := icl.NewAccountManager(environments)
+	am.SetAPIKey(icl.EnvProd, key, source)
+
+	inst := newTestInstanceEnv(t, "prod", icl.EnvProd)
+	inst.Enable()
+	insts := Instances{inst}
+	poster := &fakePoster{}
+	insts.ResolveTokens(t.Context(), 0, am, "source logs", poster)
+	events := poster.events()
+	require.Len(t, events, 1)
+	failure, ok := events[0].(EnvCredFailedMsg)
+	require.True(t, ok)
+	assert.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_DISCOVERY_API_KEY" token exchange failed`)
+	assert.ErrorContains(t, failure.Err, "query OIDC config: http 503: local discovery failed")
+	assert.NotContains(t, failure.Err.Error(), key)
+
+	m := New(t.Context(), depstest.NewTest(t))
+	m.instances = insts
+	m.OnEnvCredFailed(failure)
+	assert.Equal(t, failure.Err.Error(), inst.Store.GetMessage())
+}
+
 func TestOnEnvCredFailed_StaleGenerationKeepsStateAndMessage(t *testing.T) {
 	t.Parallel()
 	prod := newTestInstanceEnv(t, "p", icl.EnvProd)

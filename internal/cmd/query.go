@@ -301,7 +301,7 @@ func runQueryWithOptions(ctx context.Context, stdout, stderr io.Writer, cfg *con
 	manager := newQueryAccountManager(cfg.ICL.Environments)
 	for cname, environment := range cfg.ICL.Environments {
 		if key, ok := environment.APIKeyEnvOverride(os.Getenv); ok {
-			manager.SetAPIKey(icl.Environment(cname), key)
+			manager.SetAPIKey(icl.Environment(cname), key, environment.APIKeyEnvVar)
 		}
 	}
 	initialTokens, sessionPath, err := loadQuerySession(manager)

@@ -2416,8 +2416,8 @@ func (m *Model) saveSession() {
 	m.lastSavedSession = maps.Clone(tokens)
 }
 
-func (m *Model) SetAPIKey(env icl.Environment, key string) {
-	m.authManager.SetAPIKey(env, key)
+func (m *Model) SetAPIKey(env icl.Environment, key, source string) {
+	m.authManager.SetAPIKey(env, key, source)
 }
 
 func (m *Model) syncInstanceState() {

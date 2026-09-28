@@ -588,7 +588,7 @@ func (m *Model) ApplyEnv(env []string) {
 		m.logger.Debug("set config api key via env", "environment", cname, "secret length", len(key))
 		environment.APIKey = key
 		m.bundle.Config.ICL.Environments[cname] = environment
-		m.instances.SetAPIKey(icl.Environment(cname), key)
+		m.instances.SetAPIKey(icl.Environment(cname), key, environment.APIKeyEnvVar)
 	}
 }
 

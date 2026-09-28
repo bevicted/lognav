@@ -1312,6 +1312,44 @@ func TestQueryEnvironments_UsesDefaultVariableForEveryConfiguredEnvironment(t *t
 	assert.Empty(t, cfg.ICL.Environments["test-cloud"].APIKey, "headless overrides must not mutate config")
 }
 
+func TestQuery_EnvironmentAPIKeyFailureIdentifiesActualSource(t *testing.T) { //nolint:paralleltest // mutates command seams and XDG environment
+	const (
+		source = "LOGNAV_QUERY_TEST_API_KEY"
+		key    = "synthetic-query-environment-key"
+	)
+	setQueryTestXDG(t)
+	cfg := queryTestConfig()
+	environment := cfg.ICL.Environments["bluemix"]
+	environment.APIKeyEnvVar = source
+	cfg.ICL.Environments["bluemix"] = environment
+	t.Setenv(source, key)
+
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, key, r.Form.Get("apikey"))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`)
+	}))
+	defer iam.Close()
+
+	oldManager := newQueryAccountManager
+	defer func() { newQueryAccountManager = oldManager }()
+	newQueryAccountManager = func(environments map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
+		manager := icl.NewAccountManager(environments)
+		manager.SetOIDCForTest(icl.EnvProd, iam.URL)
+		return manager
+	}
+
+	_, stderr, err := runQueryCommand(t, cfg, "", "query", "--instance", "test")
+	require.Error(t, err)
+	assert.Equal(t, ExitUnavailable, ExitCode(err))
+	assert.ErrorContains(t, err, `API key from environment variable "LOGNAV_QUERY_TEST_API_KEY" token exchange failed`)
+	assert.Contains(t, err.Error(), "BXNIM0401E: API key rejected")
+	assert.NotContains(t, err.Error(), key)
+	assert.Contains(t, stderr, `API key from environment variable "LOGNAV_QUERY_TEST_API_KEY" token exchange failed`)
+	assert.NotContains(t, stderr, key)
+}
+
 func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //nolint:paralleltest // mutates command seams, auth executable, and XDG environment
 	tests := []struct {
 		name          string

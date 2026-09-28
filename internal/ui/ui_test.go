@@ -147,6 +147,42 @@ func TestModel_ApplyEnvAPIKeySelectors(t *testing.T) {
 	}
 }
 
+func TestModel_ApplyEnvForwardsCredentialSourceToAuthError(t *testing.T) {
+	const (
+		source = "LOGNAV_UI_TEST_API_KEY"
+		key    = "synthetic-ui-environment-key"
+	)
+	var iamURL string
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"token_endpoint":"`+iamURL+`"}`)
+			return
+		}
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, key, r.Form.Get("apikey"))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`)
+	}))
+	iamURL = iam.URL
+	t.Cleanup(iam.Close)
+
+	bundle := depstest.NewTest(t)
+	bundle.Config.ICL.Environments = map[string]config.ICLEnvironmentConfig{
+		"custom": {IAMURL: iam.URL, APIKeyEnvVar: source},
+	}
+	m, err := New(t.Context(), bundle)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, m.Close()) })
+
+	m.ApplyEnv([]string{source + "=" + key})
+	crn := config.MustCRNFromString("crn:v1:custom:public:logs:us-south:a/account:instance::")
+	_, _, err = m.instances.ResolveInstanceToken(t.Context(), crn.String())
+	require.Error(t, err)
+	assert.ErrorContains(t, err, `API key from environment variable "LOGNAV_UI_TEST_API_KEY" token exchange failed`)
+	assert.Contains(t, err.Error(), "BXNIM0401E: API key rejected")
+	assert.NotContains(t, err.Error(), key)
+}
+
 func TestModel_DrawTo_ReturnsNilOnEmptySize(t *testing.T) {
 	t.Parallel()
 

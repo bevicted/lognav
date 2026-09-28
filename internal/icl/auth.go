@@ -112,6 +112,7 @@ type envAuth struct {
 	accessTokens map[string]tokenEntry // keyed by account ID (CRN.ScopeID)
 	oidcConfig   *oidcConfig
 	apiKey       secret.String
+	apiKeyEnvVar string
 	opRef        string
 }
 
@@ -559,6 +560,9 @@ func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, all
 	if ea.apiKey != "" {
 		token, err := am.exchangeAPIKey(ctx, ea, accountID, string(ea.apiKey))
 		if err != nil {
+			if ea.apiKeyEnvVar != "" {
+				return "", fmt.Errorf("API key from environment variable %q token exchange failed: %w", ea.apiKeyEnvVar, err)
+			}
 			return "", fmt.Errorf("API key token exchange failed: %w", err)
 		}
 		return token, nil
@@ -574,6 +578,7 @@ func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, all
 			return "", fmt.Errorf("1Password API key token exchange failed: %w", err)
 		}
 		ea.apiKey = secret.String(apiKey)
+		ea.apiKeyEnvVar = ""
 		return token, nil
 	}
 
@@ -587,13 +592,14 @@ func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, all
 	return "", NewPasscodeRequired(oidcCfg.PasscodeEndpoint, env)
 }
 
-// SetAPIKey updates the API key for an environment at runtime.
-// Used when an API-key environment variable arrives after construction.
-func (am *AccountManager) SetAPIKey(env Environment, key string) {
+// SetAPIKey updates the API key and its environment-variable source for an
+// environment at runtime. An empty source identifies a configured key.
+func (am *AccountManager) SetAPIKey(env Environment, key, source string) {
 	if ea, ok := am.envs[env]; ok {
 		ea.mu.Lock()
 		defer ea.mu.Unlock()
 		ea.apiKey = secret.String(key)
+		ea.apiKeyEnvVar = source
 	}
 }
 
