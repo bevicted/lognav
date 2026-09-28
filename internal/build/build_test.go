@@ -7,6 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestEffectiveVersion_PrefersPackageStamp(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "v1.2.3", effectiveVersion("v1.2.3"))
+}
+
 func TestVCSVersion(t *testing.T) {
 	t.Parallel()
 

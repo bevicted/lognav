@@ -18,16 +18,25 @@ const unknownVersion = "unknown"
 // revision, matching the width Go uses in pseudo-versions.
 const shortHashLen = 12
 
-var version = resolveVersion()
+// version may be stamped by package builds with
+// `-X github.com/bevicted/lognav/internal/build.version=<git-ref>`.
+var version string
 
-// GetVersion returns the build version. For a local build from the git tree it
-// is the short commit hash, with a "+dirty" suffix when the working tree had
-// uncommitted changes. For binaries produced by `go install module@version`
-// (which carry no VCS settings) it is the module version: a release tag or a Go
-// pseudo-version. It falls back to "unknown" when no build information is
-// available.
+// GetVersion returns the package-stamped version when present. For a local
+// build from the git tree it is otherwise the short commit hash, with a
+// "+dirty" suffix when the working tree has uncommitted changes. For binaries
+// produced by `go install module@version` (which carry no VCS settings) it is
+// the module version: a release tag or a Go pseudo-version. It falls back to
+// "unknown" when no build information is available.
 func GetVersion() string {
-	return version
+	return effectiveVersion(version)
+}
+
+func effectiveVersion(stamped string) string {
+	if stamped != "" {
+		return stamped
+	}
+	return resolveVersion()
 }
 
 // resolveVersion derives the version string from the embedded build info. A
