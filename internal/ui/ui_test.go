@@ -178,7 +178,7 @@ func TestModel_ApplyEnvForwardsCredentialSourceToAuthError(t *testing.T) {
 	crn := config.MustCRNFromString("crn:v1:custom:public:logs:us-south:a/account:instance::")
 	_, _, err = m.instances.ResolveInstanceToken(t.Context(), crn.String())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, `API key from environment variable "LOGNAV_UI_TEST_API_KEY" token exchange failed`)
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_UI_TEST_API_KEY" token exchange failed`)
 	assert.Contains(t, err.Error(), "BXNIM0401E: API key rejected")
 	assert.NotContains(t, err.Error(), key)
 }

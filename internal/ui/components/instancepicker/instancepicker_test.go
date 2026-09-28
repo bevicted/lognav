@@ -1057,7 +1057,7 @@ func TestResolverEnvCredentialFailureStoresSourceAndSuccessfulRetryClearsIt(t *t
 	require.Len(t, events, 1)
 	failure, ok := events[0].(EnvCredFailedMsg)
 	require.True(t, ok)
-	assert.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_TEST_API_KEY" token exchange failed`)
+	require.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_TEST_API_KEY" token exchange failed`)
 	assert.Contains(t, failure.Err.Error(), "BXNIM0401E: API key rejected")
 	assert.NotContains(t, failure.Err.Error(), key)
 
@@ -1107,8 +1107,8 @@ func TestResolverEnvCredentialDiscoveryFailureStoresSource(t *testing.T) {
 	require.Len(t, events, 1)
 	failure, ok := events[0].(EnvCredFailedMsg)
 	require.True(t, ok)
-	assert.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_DISCOVERY_API_KEY" token exchange failed`)
-	assert.ErrorContains(t, failure.Err, "query OIDC config: http 503: local discovery failed")
+	require.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_DISCOVERY_API_KEY" token exchange failed`)
+	require.ErrorContains(t, failure.Err, "query OIDC config: http 503: local discovery failed")
 	assert.NotContains(t, failure.Err.Error(), key)
 
 	m := New(t.Context(), depstest.NewTest(t))

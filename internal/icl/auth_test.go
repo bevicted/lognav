@@ -84,7 +84,7 @@ func TestGetAuthToken_EnvironmentAPIKeyFailureIdentifiesActualSource(t *testing.
 
 	_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, `API key from environment variable "LOGNAV_TEST_API_KEY" token exchange failed`)
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_TEST_API_KEY" token exchange failed`)
 	assert.NotContains(t, err.Error(), key)
 	var iamErr *IAMError
 	require.ErrorAs(t, err, &iamErr)
@@ -93,7 +93,7 @@ func TestGetAuthToken_EnvironmentAPIKeyFailureIdentifiesActualSource(t *testing.
 	am.SetAPIKey(EnvProd, "configured-key", "")
 	_, err = am.GetAuthTokenNoPasscode(t.Context(), testCRN())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "API key token exchange failed")
+	require.ErrorContains(t, err, "API key token exchange failed")
 	assert.NotContains(t, err.Error(), source)
 	assert.Equal(t, []string{key, "configured-key"}, keys)
 }
@@ -115,14 +115,14 @@ func TestGetAuthToken_EnvironmentAPIKeyDiscoveryFailureIdentifiesSource(t *testi
 
 	_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
 	require.Error(t, err)
-	assert.ErrorContains(t, err, `API key from environment variable "LOGNAV_DISCOVERY_TEST_API_KEY" token exchange failed`)
-	assert.ErrorIs(t, err, sentinel)
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_DISCOVERY_TEST_API_KEY" token exchange failed`)
+	require.ErrorIs(t, err, sentinel)
 	assert.NotContains(t, err.Error(), key)
 
 	noKey := testAccountManager("", "", "", "")
 	_, err = noKey.GetAuthToken(t.Context(), testCRN())
 	require.Error(t, err)
-	assert.ErrorIs(t, err, sentinel)
+	require.ErrorIs(t, err, sentinel)
 	assert.NotContains(t, err.Error(), source, "SSO discovery must not claim an unused environment key")
 }
 
@@ -216,8 +216,8 @@ func TestGetAuthToken_OnePasswordFailuresDoNotUseUnusedEnvironmentSource(t *test
 
 		_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
 		require.Error(t, err)
-		assert.ErrorIs(t, err, lookupErr)
-		assert.ErrorContains(t, err, "1Password lookup failed")
+		require.ErrorIs(t, err, lookupErr)
+		require.ErrorContains(t, err, "1Password lookup failed")
 		assert.NotContains(t, err.Error(), unusedSource)
 	})
 
@@ -239,7 +239,7 @@ func TestGetAuthToken_OnePasswordFailuresDoNotUseUnusedEnvironmentSource(t *test
 
 		_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "1Password API key token exchange failed")
+		require.ErrorContains(t, err, "1Password API key token exchange failed")
 		assert.NotContains(t, err.Error(), unusedSource)
 		assert.NotContains(t, err.Error(), onePasswordKey)
 		var iamErr *IAMError
@@ -284,7 +284,7 @@ func TestGetAuthToken_CachedOnePasswordAPIKeyDoesNotUseUnusedEnvironmentSource(t
 	_, err = am.GetAuthTokenNoPasscode(t.Context(), instances[1].CRN)
 	require.Error(t, err)
 	assert.Equal(t, int64(1), opReads.Load(), "the second account must reuse the cached 1Password key")
-	assert.ErrorContains(t, err, "API key token exchange failed")
+	require.ErrorContains(t, err, "API key token exchange failed")
 	assert.NotContains(t, err.Error(), unusedSource)
 	assert.NotContains(t, err.Error(), onePasswordKey)
 	var iamErr *IAMError

@@ -1343,7 +1343,7 @@ func TestQuery_EnvironmentAPIKeyFailureIdentifiesActualSource(t *testing.T) { //
 	_, stderr, err := runQueryCommand(t, cfg, "", "query", "--instance", "test")
 	require.Error(t, err)
 	assert.Equal(t, ExitUnavailable, ExitCode(err))
-	assert.ErrorContains(t, err, `API key from environment variable "LOGNAV_QUERY_TEST_API_KEY" token exchange failed`)
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_QUERY_TEST_API_KEY" token exchange failed`)
 	assert.Contains(t, err.Error(), "BXNIM0401E: API key rejected")
 	assert.NotContains(t, err.Error(), key)
 	assert.Contains(t, stderr, `API key from environment variable "LOGNAV_QUERY_TEST_API_KEY" token exchange failed`)
