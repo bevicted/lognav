@@ -20,59 +20,64 @@ type QueryCallback interface {
 	OnKeepAlive()       // server keep-alive (empty event)
 }
 
-// streamEvents parses a /v1/query Server-Sent-Events body from r, driving cb.
-// It mirrors the retired SDK's readEventLoop framing exactly:
-//   - lines starting with ":" are comments (ignored),
-//   - "data: " lines accumulate (with their trailing newline) into the event
-//     buffer,
-//   - a blank line flushes the event: empty buffer => OnKeepAlive, otherwise
-//     the buffer is JSON-decoded to a StreamItem and passed to OnData,
-//   - io.EOF ends the stream cleanly,
-//   - any other read error, or an undecodable/unknown line, calls OnError.
-//
-// streamEvents does NOT call OnClose; the caller (Query) is responsible for it
-// so it fires on every termination path. The loop returns when the stream
-// ends. A done context returns promptly between lines.
-func streamEvents(ctx context.Context, r io.Reader, cb QueryCallback) {
+// readSSEEvents parses Server-Sent Events and passes each complete data payload to
+// onData. Returning false from onData stops successfully. A done context returns
+// promptly between lines.
+func readSSEEvents(ctx context.Context, r io.Reader, onData func([]byte) (bool, error), onKeepAlive func()) error {
 	reader := bufio.NewReader(r)
 	var buf bytes.Buffer
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		default:
 		}
 
 		line, err := reader.ReadBytes('\n')
 		if err == io.EOF {
-			return
+			return nil
 		}
 		if err != nil {
-			cb.OnError(err)
-			return
+			return err
 		}
 
 		switch {
 		case bytes.HasPrefix(line, []byte(":")):
-			// comment / ": success" — ignore
+			// SSE comment, including keep-alive markers such as ": success".
 		case bytes.HasPrefix(line, []byte("data: ")):
 			buf.Write(bytes.TrimPrefix(line, []byte("data: ")))
 		case bytes.Equal(line, []byte("\n")):
 			if buf.Len() == 0 {
-				cb.OnKeepAlive()
+				onKeepAlive()
 				continue
 			}
-			var item StreamItem
-			if err := jsonutil.API.Unmarshal(buf.Bytes(), &item); err != nil {
-				cb.OnError(err)
-				return
+			keepReading, err := onData(buf.Bytes())
+			if err != nil {
+				return err
 			}
 			buf.Reset()
-			cb.OnData(&item)
+			if !keepReading {
+				return nil
+			}
 		default:
-			cb.OnError(fmt.Errorf("unknown SSE line: %q", line))
-			return
+			return fmt.Errorf("unknown SSE line: %q", line)
 		}
+	}
+}
+
+// streamEvents parses a /v1/query SSE body and drives cb. It does not call OnClose;
+// Query owns that lifecycle callback.
+func streamEvents(ctx context.Context, r io.Reader, cb QueryCallback) {
+	err := readSSEEvents(ctx, r, func(data []byte) (bool, error) {
+		var item StreamItem
+		if err := jsonutil.API.Unmarshal(data, &item); err != nil {
+			return false, err
+		}
+		cb.OnData(&item)
+		return true, nil
+	}, cb.OnKeepAlive)
+	if err != nil {
+		cb.OnError(err)
 	}
 }

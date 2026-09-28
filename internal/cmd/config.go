@@ -3,8 +3,11 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/bevicted/lognav/internal/config"
 	"github.com/bevicted/lognav/internal/deps"
@@ -54,6 +57,46 @@ func yamlValue(value any) (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+func renderConfigStatus(out io.Writer, report config.StatusReport) error {
+	table := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(table, "type\tstate\tkeys\tpath"); err != nil {
+		return err
+	}
+	for _, file := range report.Files {
+		keys := "-"
+		if file.Keys != nil {
+			keys = strconv.Itoa(*file.Keys)
+		}
+		filePath := "-"
+		if file.Path != nil {
+			filePath = *file.Path
+		}
+		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\n", file.Type, file.State, keys, filePath); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(table, "effective\t"+report.Effective.State+"\t-\t-"); err != nil {
+		return err
+	}
+	if err := table.Flush(); err != nil {
+		return err
+	}
+
+	for _, file := range report.Files {
+		for _, diagnostic := range file.Errors {
+			if _, err := fmt.Fprintf(out, "%s: %s\n", file.Type, diagnostic); err != nil {
+				return err
+			}
+		}
+	}
+	for _, diagnostic := range report.Effective.Errors {
+		if _, err := fmt.Fprintf(out, "effective: %s\n", diagnostic); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func completeReadableConfigKeys(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -108,7 +151,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	topic := &cobra.Command{
 		Use:   "config [command]",
 		Short: "Manage configuration",
-		Long:  "Configuration reads merge public defaults, optional read-only package defaults, and sparse user YAML overrides. Writes modify only the user file. `path`, `set`, `unset`, and `edit` remain available when config.yaml is missing or invalid.",
+		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides. `icl.instancesMerge` resolves once across all layers: `replace` selects the highest supplied list, while `append` combines them in layer order. Writes modify only `user.yaml`. `status`, `set`, `unset`, and `edit` remain available when user.yaml is missing or invalid.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -118,7 +161,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	show := &cobra.Command{
 		Use:     "show",
 		Short:   "Show the effective configuration",
-		Long:    "The output includes merged values, redacted secrets, and computed values, so it is display-only and cannot be edited or round-tripped as config.yaml.",
+		Long:    "The output includes merged values, redacted secrets, and computed values, so it is display-only and cannot be edited or round-tripped as user.yaml.",
 		Example: "  lognav config show\n  lognav config show -o json",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -151,7 +194,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	get := &cobra.Command{
 		Use:               "get <dotted-key>",
 		Short:             "Get one effective configuration value",
-		Long:              "Missing keys are errors. `icl.instances` is the writable list of configured targets.",
+		Long:              "Missing keys are errors. `icl.instances` reports the resolved configured targets; writes change only the user's list contribution.",
 		Example:           "  lognav config get core.enableMouse\n  lognav config get icl.instances -o json",
 		Args:              exactDottedConfigKey,
 		ValidArgsFunction: completeReadableConfigKeys,
@@ -223,8 +266,8 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	set := &cobra.Command{
 		Use:               "set <yamlpath> <value>",
 		Short:             "Set a configuration value",
-		Long:              "A leading $ on the key is optional. Numbers and booleans are typed automatically, and lists use YAML literals such as '[enter, ctrl+y]'. The value is validated before writing; rejected values do not change the file. An invalid value can be replaced in an otherwise invalid file, but the resulting complete document must validate. Only the changed key is written, preserving comments and other fields.",
-		Example:           "  lognav config set core.enableMouse false\n  lognav config set style.errorColor '#ff5555'\n  lognav config set keys.accept '[enter, ctrl+y]'",
+		Long:              "A leading $ on the key is optional. Numbers and booleans are typed automatically, and lists use YAML literals such as '[enter, ctrl+y]'. `icl.instances` writes only the user's contribution; effective reads may include lower-layer targets when `icl.instancesMerge` is `append`. The value is validated before writing; rejected values do not change the file. An invalid value can be replaced in an otherwise invalid file, but the resulting complete document must validate. Only the changed key is written, preserving comments and other fields.",
+		Example:           "  lognav config set core.enableMouse false\n  lognav config set style.errorColor '#ff5555'\n  lognav config set keys.accept '[enter, ctrl+y]'\n  lognav config set icl.instancesMerge append",
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWritableConfigKeys,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -240,7 +283,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	unset := &cobra.Command{
 		Use:               "unset <yamlpath>",
 		Short:             "Unset a configuration value",
-		Long:              "The inherited package or public default applies afterward. A leading $ on the key is optional. An absent field is a no-op. An invalid value can be removed from an otherwise invalid file, but the resulting complete document must validate.",
+		Long:              "The inherited system, Homebrew, or public default applies afterward. A leading $ on the key is optional. An absent field is a no-op. An invalid value can be removed from an otherwise invalid file, but the resulting complete document must validate.",
 		Example:           "  lognav config unset core.redrawIntervalMs",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWritableConfigKeys,
@@ -254,22 +297,34 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 		},
 	}
 
-	path := &cobra.Command{
-		Use:               "path",
-		Short:             "Print the configuration file path",
-		Long:              "Output is exactly one sparse editable user configuration file path and a newline, never the read-only package defaults path. The command does not load, validate, or create the file or its parent directory.",
-		Example:           "  lognav config path",
+	status := &cobra.Command{
+		Use:               "status",
+		Short:             "Diagnose configuration file layers",
+		Long:              "Inspect Homebrew, system, and user configuration files without loading runtime services or changing files. Text output lists each file's sparse-layer state and explicit key count, then reports diagnostics; JSON keeps diagnostics in each record.",
+		Example:           "  lognav config status\n  lognav config status -o json",
 		Args:              cobra.NoArgs,
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p, err := getConfigPath()
+			format, err := getOutputFormat(cmd)
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), p)
-			return err
+			report := config.InspectStatus()
+			if format == outputJSON {
+				err = writeJSON(cmd.OutOrStdout(), report)
+			} else {
+				err = renderConfigStatus(cmd.OutOrStdout(), report)
+			}
+			if err != nil {
+				return err
+			}
+			if report.HasErrors() {
+				return WithExit(ExitConfig, errors.New("configuration status found errors"))
+			}
+			return nil
 		},
 	}
+	addOutputFlag(status)
 
 	topic.AddCommand(
 		show,
@@ -277,7 +332,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 		describe,
 		set,
 		unset,
-		path,
+		status,
 		&cobra.Command{
 			Use:               "edit [flags]",
 			Short:             "Edit the configuration file",

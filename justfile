@@ -18,14 +18,15 @@ ci:
 # — `lognav version` then shows the real commit hash, matching released builds.
 run *args:
     #!/bin/bash
-    go build -trimpath -o "${TMPDIR:-/tmp}/lognav-dev" .
+    go build -o "${TMPDIR:-/tmp}/lognav-dev" .
     exec "${TMPDIR:-/tmp}/lognav-dev" "$@"
 
 build:
-    go build -trimpath -o lognav .
+    mkdir -p bin
+    go build -o bin/lognav .
 
 install-remote:
-    go install -trimpath github.com/bevicted/lognav@latest
+    go install github.com/bevicted/lognav@latest
 
 # --- Format & lint ---
 
@@ -33,12 +34,12 @@ fmt:
     go fmt ./...
     golangci-lint fmt ./...
     go mod tidy
-    bunx prettier --write "**/*.md"
+    bunx prettier --write "docs/**/*.md"
 
 fmt-check:
     golangci-lint fmt --diff ./...
     go mod tidy -diff
-    bunx prettier --check "**/*.md"
+    bunx prettier --check "docs/**/*.md"
 
 lint:
     golangci-lint run ./...
@@ -46,8 +47,12 @@ lint:
 lint-fix:
     golangci-lint run --fix ./...
 
+# Check reachable Go vulnerabilities, every required Go module (including
+# build-tagged tools), and locked Bun dependencies.
 vuln:
     govulncheck ./...
+    govulncheck -scan=module
+    bun audit
 
 # --- Tests & coverage ---
 
@@ -126,6 +131,6 @@ bin-size:
     #!/usr/bin/env bash
     set -euo pipefail
     out=$(mktemp)
-    go build -trimpath -o "$out" .
+    go build -o "$out" .
     printf 'bin-size: %s bytes\n' "$(wc -c < "$out" | tr -d ' ')"
     rm -f "$out"

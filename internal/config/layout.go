@@ -10,6 +10,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+const (
+	instanceMergeReplace = "replace"
+	instanceMergeAppend  = "append"
+)
+
 // newConfig inits a Config object with default values.
 //
 //nolint:funlen // single literal initializing all default config fields; splitting harms readability.
@@ -142,11 +147,14 @@ func newConfig() *Config {
 			DpErrorFg:    ConfigColor{ansi.Red},
 		},
 		ICL: ICL{
-			Instances: []ICLInstanceConfig{},
+			InstancesMerge: instanceMergeReplace,
+			Instances:      []ICLInstanceConfig{},
 			Environments: map[string]ICLEnvironmentConfig{
 				"bluemix": {IAMURL: "https://iam.cloud.ibm.com/identity"},
 			},
 			DefaultQuery: `source logs between @'{{ date -1 }}' and @'now'
+| filter $l.subsystemname == 'example-service'
+// | filter $d ~~ 'search for something'
 | orderby $m.timestamp asc
 `,
 		},
@@ -248,6 +256,7 @@ func newConfig() *Config {
 			MaxLogFiles:             10,
 			EnableMouse:             true,
 			EnableHover:             true,
+			OpenBrowser:             true,
 			DoubleClickMs:           400,
 			ScrollAxisLockMs:        150,
 			WheelScrollLines:        5,
@@ -323,7 +332,7 @@ type Keys struct {
 	// specific
 	// last resort, prefer generic section
 
-	ArchiveDispatch  KeyBind `yaml:"archiveDispatch"  desc:"dispatch enabled instances' query as background (archive) queries"`
+	ArchiveDispatch  KeyBind `yaml:"archiveDispatch"  desc:"dispatch enabled instances' query to the archive"`
 	CancelAllFetches KeyBind `yaml:"cancelAllFetches" desc:"cancel all ongoing log fetches"`
 	CopyEntire       KeyBind `yaml:"copyEntire"       desc:"copy entire data under cursor"`
 	CopyValue        KeyBind `yaml:"copyValue"        desc:"copy value under cursor, fallback to entire"`
@@ -430,9 +439,10 @@ type EffectiveInstance struct {
 }
 
 type ICL struct {
-	Instances    []ICLInstanceConfig             `yaml:"instances"    desc:"configured ICL instances"`
-	Environments map[string]ICLEnvironmentConfig `yaml:"environments" desc:"IAM environments keyed by CRN CName"`
-	DefaultQuery string                          `yaml:"defaultQuery" desc:"Dataprime query template resolved on startup"`
+	InstancesMerge string                          `yaml:"instancesMerge" desc:"instance-list merge policy: replace or append"`
+	Instances      []ICLInstanceConfig             `yaml:"instances"      desc:"configured ICL instances"`
+	Environments   map[string]ICLEnvironmentConfig `yaml:"environments" desc:"IAM environments keyed by CRN CName"`
+	DefaultQuery   string                          `yaml:"defaultQuery" desc:"Dataprime query template resolved on startup"`
 }
 
 // ICLEnvironmentConfig supplies one IAM discovery endpoint and its optional
@@ -579,6 +589,7 @@ type Core struct {
 	MaxLogFiles             uint8       `yaml:"maxLogFiles"             desc:"max number of log files to retain in the state directory"`
 	EnableMouse             bool        `yaml:"enableMouse"             desc:"enable mouse support"`
 	EnableHover             bool        `yaml:"enableHover"             desc:"route mouse-motion events to highlight what is under the pointer: tint the log/list row and timeline bucket (style.hoverRowBg), move the dialog-button selection, and highlight the hovered tab on the tab bar (requires enableMouse; on by default)"`
+	OpenBrowser             bool        `yaml:"openBrowser"             desc:"automatically open the IAM passcode URL in the default browser for TUI fetches and lognav login; --no-open still disables it for login"`
 	DoubleClickMs           uint16      `yaml:"doubleClickMs"           desc:"double-press detection window in milliseconds; two left-clicks on the same cell within this window activate the row (expand log / open instance / load snapshot), and two ctrl+c presses exit lognav. 0 disables double-click (mouse selects only; keyboard still activates) but ctrl+c keeps the 400ms default so lognav can always be quit. Non-zero values are clamped to [50, 2000]"`
 	ScrollAxisLockMs        uint16      `yaml:"scrollAxisLockMs"        desc:"mouse-wheel axis lock window in milliseconds: within a continuous scroll gesture (including macOS momentum/inertial events) the wheel is locked to one axis, biased toward vertical, so a diagonal touchpad swipe scrolls vertically unless horizontal motion clearly dominates; sustained counter-axis scrolling reclaims control even mid-momentum. The lock resets after this many ms of scroll inactivity (0 disables locking, allowing mixed diagonal scroll)"`
 	WheelScrollLines        uint16      `yaml:"wheelScrollLines"        desc:"number of rows a vertical mouse-wheel notch pans the viewport (log viewer and list panes scroll the view, not the cursor; the cursor/selection rides its line and is only dragged once it reaches the scroll margin). 0 uses the default of 5"`
@@ -590,7 +601,7 @@ type Core struct {
 	WatchCooldownSeconds    uint16      `yaml:"watchCooldownSeconds"    desc:"seconds to wait between watch fetch rounds (anti-DoS throttle)"`
 	WatchMaxFetches         uint16      `yaml:"watchMaxFetches"         desc:"max watch fetch rounds including the first; 0 = unlimited"`
 	WatchMaxDurationSeconds uint16      `yaml:"watchMaxDurationSeconds" desc:"max total watch wall-clock seconds before stopping; 0 = unlimited"`
-	EnableExperimental      bool        `yaml:"enableExperimental"      desc:"enable experimental / opt-in features (currently: the archive background-query tab and fetch mode). Off by default."`
+	EnableExperimental      bool        `yaml:"enableExperimental"      desc:"enable experimental / opt-in features. Off by default."`
 }
 
 // RedrawInterval returns the bounded fetch-progress redraw cadence. Zero uses

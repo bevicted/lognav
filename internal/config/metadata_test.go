@@ -87,6 +87,17 @@ func TestFirstFetchKeyMetadata(t *testing.T) {
 	assert.Equal(t, KeyBind{"shift+f"}, node.Default)
 }
 
+func TestWritableInstancesMergeMetadata(t *testing.T) {
+	t.Parallel()
+	metas := GetFieldMetadata(New(), "$.icl.instancesMerge")
+	require.Len(t, metas, 1)
+	assert.False(t, metas[0].Computed)
+	assert.False(t, metas[0].ReadOnly)
+	assert.Equal(t, "string", metas[0].GoType)
+	assert.Equal(t, "replace", metas[0].Default)
+	assert.Contains(t, metas[0].Description, "replace or append")
+}
+
 func TestWritableInstancesMetadata(t *testing.T) {
 	t.Parallel()
 	metas := GetFieldMetadata(New(), "$.icl.instances")
@@ -108,7 +119,7 @@ func TestGetFieldMetadataCore(t *testing.T) {
 		fieldKeys[m.YAMLKey] = true
 	}
 
-	expected := []string{"showKeyHints", "extraSnippets", "includeDefaultSnippets", "includeSnippetsInEditor", "maxAutoSnapshots", "maxLogFiles", "enableMouse", "enableHover", "doubleClickMs", "scrollAxisLockMs", "wheelScrollLines", "redrawIntervalMs", "saveSnapshotOnFetchDone", "notifyOnFetchDone", "notifyStyle", "watchCooldownSeconds", "watchMaxFetches", "watchMaxDurationSeconds", "enableExperimental"}
+	expected := []string{"showKeyHints", "extraSnippets", "includeDefaultSnippets", "includeSnippetsInEditor", "maxAutoSnapshots", "maxLogFiles", "enableMouse", "enableHover", "openBrowser", "doubleClickMs", "scrollAxisLockMs", "wheelScrollLines", "redrawIntervalMs", "saveSnapshotOnFetchDone", "notifyOnFetchDone", "notifyStyle", "watchCooldownSeconds", "watchMaxFetches", "watchMaxDurationSeconds", "enableExperimental"}
 	for _, key := range expected {
 		if !fieldKeys[key] {
 			t.Errorf("expected core field %q not found", key)

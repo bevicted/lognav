@@ -29,7 +29,7 @@ func TestNoArgumentCompletionSuppressesFiles(t *testing.T) {
 		{"snapshot", "list"},
 		{"snapshot", "prune"},
 		{"config", "show"},
-		{"config", "path"},
+		{"config", "status"},
 		{"config", "edit"},
 	} {
 		cmd := root

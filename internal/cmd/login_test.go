@@ -69,6 +69,11 @@ func runLoginCommand(t *testing.T, args ...string) (string, string, error) {
 	t.Helper()
 	cfg := config.New()
 	cfg.ICL.Environments = loginTestEnvironments()
+	return runLoginCommandWithConfig(t, cfg, args...)
+}
+
+func runLoginCommandWithConfig(t *testing.T, cfg *config.Config, args ...string) (string, string, error) {
+	t.Helper()
 	root := newRootCmd(func(bool) (deps.Bundle, error) { return deps.New(cfg, state.New()), nil })
 	var stdout, stderr bytes.Buffer
 	root.SetArgs(append([]string{"login"}, args...))
@@ -166,6 +171,41 @@ func TestLogin_DefaultAndRepeatedEnvironments(t *testing.T) { //nolint:parallelt
 		assert.NotContains(t, stdout, "stage-passcode")
 		assert.NotContains(t, stdout, "prod-passcode")
 	})
+}
+
+func TestLogin_BrowserConfigAndNoOpen(t *testing.T) { //nolint:paralleltest // replaces command seams
+	setLoginSeams(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"refresh_token":"refresh"}`)
+	}))
+	t.Cleanup(srv.Close)
+	newLoginAccountManager = func(_ map[string]config.ICLEnvironmentConfig) *icl.AccountManager { return loginTestManager(srv) }
+	loginSessionPath = func() (string, error) { return "session", nil }
+	loadLoginSession = func(string) (map[icl.Environment]string, error) { return map[icl.Environment]string{}, nil }
+	saveLoginSession = func(string, map[icl.Environment]string) error { return nil }
+	readLoginPasscode = func(context.Context) ([]byte, error) { return []byte("passcode"), nil }
+	isTTY = func() bool { return true }
+
+	browserCalls := 0
+	openBrowser = func(context.Context, string) error { browserCalls++; return nil }
+	for _, tt := range []struct {
+		name        string
+		configValue bool
+		args        []string
+		wantCalls   int
+	}{
+		{name: "config enabled", configValue: true, wantCalls: 1},
+		{name: "config disabled", configValue: false, wantCalls: 0},
+		{name: "no-open overrides config", configValue: true, args: []string{"--no-open"}, wantCalls: 0},
+	} {
+		cfg := config.New()
+		cfg.ICL.Environments = loginTestEnvironments()
+		cfg.Core.OpenBrowser = tt.configValue
+		before := browserCalls
+		_, _, err := runLoginCommandWithConfig(t, cfg, tt.args...)
+		require.NoError(t, err, tt.name)
+		assert.Equal(t, tt.wantCalls, browserCalls-before, tt.name)
+	}
 }
 
 // TestLogin_DiagnosticLogsCheckpoints verifies standalone checkpoint logging

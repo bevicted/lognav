@@ -9,25 +9,15 @@ change before the first major release.
 - Parallel queries across IBM Cloud Logs instances
 - Dataprime queries, jq filtering, search, and a severity timeline
 - Local snapshots that can be saved, opened, and shared
-- Experimental ICL background queries and archive collection
 - Headless queries for scripts and agents
 - Browser/passcode login, API-key, and optional 1Password authentication
 
 ## Install
 
-Build from the public source repository:
+Install the public module with Go:
 
 ```sh
-git clone https://github.com/bevicted/lognav.git
-cd lognav
-go build -trimpath -o lognav .
-./lognav completion --install
-```
-
-After a release is available, install the public module instead:
-
-```sh
-go install -trimpath github.com/bevicted/lognav@latest
+go install github.com/bevicted/lognav@latest
 lognav completion --install
 ```
 
@@ -37,34 +27,46 @@ shell session after installation.
 
 ## Quick start
 
-Configure at least one IBM Cloud Logs instance before querying. `icl.instances`
-is a writable list; use `[]` when you intentionally want no instances. Save this
-at the path printed by `./lognav config path`:
+Configure at least one IBM Cloud Logs instance before querying. Public builds
+default `icl.instancesMerge` to `replace`: the highest-priority supplied list is
+effective. Set it to `append` to add personal entries to managed Homebrew or
+system entries in layer order. `lognav config set icl.instances` writes only the
+user list contribution; `config get` and `config show` report the resolved list.
+Run `lognav config status` to find and diagnose the editable `user.yaml` path,
+then save this configuration there:
 
 ```yaml
-version: 1
 icl:
+  instancesMerge: append
   instances:
-    - name: production
-      crn: "crn:v1:bluemix:public:logs:us-south:a/<account-id>:<instance-id>::"
+    - name: personal
+      crn: "crn:v1:bluemix:public:logs:us-south:a/example:personal::"
 ```
 
-Replace the placeholder CRN values with your IBM Cloud Logs instance values.
+To replace all lower entries, use `instancesMerge: replace` with your complete
+list. Clear every entry only with `instancesMerge: replace` and `instances: []`;
+an empty list contributes nothing when the final mode is `append`.
+
+Existing `config.yaml` files are not loaded or changed. If `user.yaml` does not
+exist, rename `config.yaml` manually. If both files exist, reconcile them
+manually without overwriting either file.
+
+`config status` reports Homebrew, system, and user file layers as `valid`,
+`missing`, or `error`, followed by effective validation. Scripts can read the
+editable path from the `user` record in `lognav config status -o json`.
+
 An API key is not required: start lognav and use the IAM browser/passcode flow
 when prompted.
 
 ```sh
-./lognav
+lognav
 ```
 
 To authenticate before opening the TUI, use the standalone login command:
 
 ```sh
-./lognav login
+lognav login
 ```
-
-The quick-start commands use the `./lognav` binary built above. If you installed
-with `go install`, use `lognav` instead.
 
 See [Authentication](user/authentication.md) for saved-session behavior and
 optional API-key or 1Password configuration. Edit the rest of your configuration
@@ -96,18 +98,19 @@ Press `?` in the TUI for context-sensitive keybindings.
 For development, see [CONTRIBUTING](CONTRIBUTING.md) and
 [design documentation](dev/design/).
 
-## Community
-
-Questions, bugs, feature requests, and discussion belong in the
-[lognav repository](https://github.com/bevicted/lognav).
-
-## License
-
-lognav is licensed under the [Apache License 2.0](../LICENSE).
-
 ## Additional resources
 
 - [jq cheat sheet](https://cht.sh/jq)
 - [Dataprime examples](https://cloud.ibm.com/docs/cloud-logs?topic=cloud-logs-dataprime-qs)
 - [Dataprime reference](https://cloud.ibm.com/docs/cloud-logs?topic=cloud-logs-dataprime-ref)
 - [Dataprime nvim parser](https://github.com/smrtrfszm/dataprime.nvim)
+
+## Build locally
+
+```sh
+git clone https://github.com/bevicted/lognav.git
+cd lognav
+mkdir -p bin
+go build -o bin/lognav .
+./bin/lognav completion --install
+```

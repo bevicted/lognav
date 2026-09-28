@@ -24,6 +24,7 @@ func TestConfigurableLeafPath(t *testing.T) {
 		{"scalar_leaf", "$.core.enableMouse", true, "bool"},
 		{"leading_dot_form", ".core.redrawIntervalMs", true, "uint16"},
 		{"keybind_leaf", "$.keys.accept", true, "[]string"},
+		{"instances_merge_leaf", "$.icl.instancesMerge", true, "string"},
 		{"extra_instances_leaf", "$.icl.instances", true, "[]ICLInstanceConfig"},
 		{"environments_map_leaf", "$.icl.environments", true, "map[string]ICLEnvironmentConfig"},
 		{"version_leaf", "$.version", true, "int"},
@@ -112,6 +113,11 @@ func TestSetValue(t *testing.T) {
 			name: "whole_extra_color_rules_list",
 			src:  base, path: "logs.extraColorRules", value: "[{match: ERROR, fg: red}]",
 			wantSubstr: []string{"extraColorRules:", "match: ERROR", "fg: red"},
+		},
+		{
+			name: "instance_merge_mode",
+			src:  base, path: "icl.instancesMerge", value: "append",
+			wantSubstr: []string{"instancesMerge: append"},
 		},
 		{
 			name: "whole_extra_instances_list",
@@ -218,7 +224,7 @@ func TestSetConfig_RejectsUnsupportedVersion(t *testing.T) {
 func TestWriteConfigFile_SecuresExistingFile(t *testing.T) {
 	t.Parallel()
 
-	p := filepath.Join(t.TempDir(), "config.yaml")
+	p := filepath.Join(t.TempDir(), "user.yaml")
 	require.NoError(t, os.WriteFile(p, []byte("version: 1\n"), 0o644)) //nolint:gosec // verify remediation of an insecure existing mode.
 	require.NoError(t, os.Chmod(p, 0o644))                             //nolint:gosec // umask may have already restricted it.
 
@@ -317,10 +323,14 @@ func TestSetConfig_UnsetConfig_DiskRoundTrip(t *testing.T) {
 
 	p, err := GetConfigPath()
 	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(dir, "lognav", "user.yaml"), p)
 	b, err := os.ReadFile(p) //nolint:gosec // test temp path
 	require.NoError(t, err)
 	assert.Contains(t, string(b), "enableMouse: false")
 	assert.Contains(t, string(b), "version:")
+	info, err := os.Stat(p)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 
 	// set a second field
 	require.NoError(t, SetConfig("logs.scrolloff", "9"))

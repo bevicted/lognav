@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,6 +53,7 @@ func TestConfigShowAndGet_EffectiveRedactedView(t *testing.T) {
 	text, err := configReadCommand(t, cfg, "show")
 	require.NoError(t, err)
 	assert.Contains(t, text, "instances:")
+	assert.Contains(t, text, "instancesMerge: replace")
 	assert.Contains(t, text, "name: one")
 	assert.Contains(t, text, "name: two")
 	assert.Contains(t, text, "apiKey: redacted")
@@ -72,6 +72,7 @@ func TestConfigShowAndGet_EffectiveRedactedView(t *testing.T) {
 	bluemix, ok := environments["bluemix"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "redacted", bluemix["apiKey"])
+	assert.Equal(t, "replace", icl["instancesMerge"])
 	instances, ok := icl["instances"].([]any)
 	require.True(t, ok)
 	require.Len(t, instances, 2)
@@ -149,10 +150,10 @@ func TestConfigKeyCompletion(t *testing.T) {
 		want     []string
 		dontWant string
 	}{
-		{name: "get", command: "get", prefix: "icl.in", want: []string{"icl.instances\t"}},
+		{name: "get", command: "get", prefix: "icl.in", want: []string{"icl.instances\t", "icl.instancesMerge\t"}},
 		{name: "describe", command: "describe", prefix: "core", want: []string{"core\t", "core.enableMouse\t"}},
-		{name: "set", command: "set", prefix: "icl.in", want: []string{"icl.instances\t"}},
-		{name: "unset", command: "unset", prefix: "icl.in", want: []string{"icl.instances\t"}},
+		{name: "set", command: "set", prefix: "icl.in", want: []string{"icl.instances\t", "icl.instancesMerge\t"}},
+		{name: "unset", command: "unset", prefix: "icl.in", want: []string{"icl.instances\t", "icl.instancesMerge\t"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -265,94 +266,178 @@ func TestConfigCommandCompletion_ExcludesInstance(t *testing.T) {
 	assert.NotContains(t, out.String(), "instance\t")
 }
 
-//nolint:paralleltest // modifies XDG_CONFIG_HOME and the getConfigPath test seam
-func TestConfigPath(t *testing.T) {
-	run := func(t *testing.T, setup func(bool) (deps.Bundle, error), args ...string) (string, error) {
+//nolint:paralleltest // modifies XDG_CONFIG_HOME.
+func TestConfigStatus(t *testing.T) {
+	run := func(t *testing.T, args ...string) (string, error) {
 		t.Helper()
 		var stdout bytes.Buffer
-		root := newRootCmd(setup)
-		root.SetArgs(append([]string{configCmd, "path"}, args...))
+		root := newRootCmd(failingSetup())
+		root.SetArgs(append([]string{configCmd, "status"}, args...))
 		root.SetOut(&stdout)
 		root.SetErr(&bytes.Buffer{})
 		err := root.Execute()
 		return stdout.String(), err
 	}
 
-	t.Run("XDG missing path does not load config or create files", func(t *testing.T) {
+	t.Run("all missing is read-only and bypasses runtime loading", func(t *testing.T) {
 		xdgHome := t.TempDir()
 		t.Setenv("XDG_CONFIG_HOME", xdgHome)
-		want := filepath.Join(xdgHome, "lognav", "config.yaml")
 
-		got, err := run(t, failingSetup())
+		got, err := run(t)
 		require.NoError(t, err)
-		assert.Equal(t, want+"\n", got)
-		_, err = os.Stat(filepath.Dir(want))
+		assert.Contains(t, got, "type       state    keys  path")
+		assert.Contains(t, got, "homebrew   missing  0     -")
+		assert.Contains(t, got, "system     missing  0     "+filepath.Join(xdgHome, "lognav", "system.yaml"))
+		assert.Contains(t, got, "user       missing  0     "+filepath.Join(xdgHome, "lognav", "user.yaml"))
+		assert.Contains(t, got, "effective  valid    -     -")
+		_, err = os.Stat(filepath.Join(xdgHome, "lognav"))
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
 
-	t.Run("invalid config is not loaded or changed", func(t *testing.T) {
+	t.Run("invalid file returns complete safe JSON report", func(t *testing.T) {
 		xdgHome := t.TempDir()
 		t.Setenv("XDG_CONFIG_HOME", xdgHome)
-		want := filepath.Join(xdgHome, "lognav", "config.yaml")
-		invalid := []byte("version: 1\ncore:\n  enableMouse: not-a-bool\n")
-		require.NoError(t, os.MkdirAll(filepath.Dir(want), 0o700))
-		require.NoError(t, os.WriteFile(want, invalid, 0o600))
+		userPath := filepath.Join(xdgHome, "lognav", "user.yaml")
+		invalid := []byte("version: 1\ncore:\n  enableMouse: fake-credential\n")
+		require.NoError(t, os.MkdirAll(filepath.Dir(userPath), 0o700))
+		require.NoError(t, os.WriteFile(userPath, invalid, 0o600))
 
-		got, err := run(t, defaultSetup)
-		require.NoError(t, err)
-		assert.Equal(t, want+"\n", got)
-		actual, err := os.ReadFile(want) // #nosec G304 -- test temp path
+		got, err := run(t, "-o", "json")
+		require.Error(t, err)
+		assert.Equal(t, ExitConfig, ExitCode(err))
+		assert.NotContains(t, got, "fake-credential")
+		var report map[string]any
+		require.NoError(t, json.Unmarshal([]byte(got), &report))
+		files, ok := report["files"].([]any)
+		require.True(t, ok)
+		require.Len(t, files, 3)
+		userFile, ok := files[2].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "user", userFile["type"])
+		assert.Equal(t, "error", userFile["state"])
+		assert.NotContains(t, userFile, "exists")
+		assert.NotContains(t, userFile, "valid")
+		assert.IsType(t, []any{}, userFile["errors"])
+		effective, ok := report["effective"].(map[string]any)
+		require.True(t, ok)
+		assert.IsType(t, []any{}, effective["errors"])
+		text, textErr := run(t)
+		require.Error(t, textErr)
+		assert.Equal(t, ExitConfig, ExitCode(textErr))
+		assert.Less(t, strings.Index(text, "effective  error"), strings.Index(text, "user: invalid configuration"))
+		assert.NotContains(t, text, "fake-credential")
+
+		actual, err := os.ReadFile(userPath) // #nosec G304 -- test fixture path
 		require.NoError(t, err)
 		assert.Equal(t, invalid, actual)
 	})
 
-	t.Run("home fallback", func(t *testing.T) {
-		t.Setenv("XDG_CONFIG_HOME", "")
-		home, err := os.UserHomeDir()
-		require.NoError(t, err)
-
-		got, err := run(t, failingSetup())
-		require.NoError(t, err)
-		assert.Equal(t, filepath.Join(home, ".config", "lognav", "config.yaml")+"\n", got)
-	})
-
-	t.Run("extra argument is a usage error", func(t *testing.T) {
+	t.Run("invalid output and output writer follow normal errors", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-
-		got, err := run(t, failingSetup(), "extra")
-		err = renderExit(&bytes.Buffer{}, nil, err)
+		got, err := run(t, "--output", "bad")
 		require.Error(t, err)
 		assert.Equal(t, ExitUsage, ExitCode(err))
 		assert.Empty(t, got)
-	})
 
-	t.Run("resolver error", func(t *testing.T) {
-		oldGetConfigPath := getConfigPath
-		getConfigPath = func() (string, error) { return "", errors.New("resolve failed") }
-		t.Cleanup(func() { getConfigPath = oldGetConfigPath })
-
-		got, err := run(t, failingSetup())
-		require.EqualError(t, err, "resolve failed")
-		assert.Empty(t, got)
-	})
-
-	t.Run("help and completion expose path", func(t *testing.T) {
-		root := newRootCmd(noopSetup(t))
-		var help bytes.Buffer
-		root.SetArgs([]string{configCmd, "path", "--help"})
-		root.SetOut(&help)
+		root := newRootCmd(failingSetup())
+		root.SetArgs([]string{configCmd, "status"})
+		root.SetOut(failingWriter{})
 		root.SetErr(&bytes.Buffer{})
-		require.NoError(t, root.Execute())
-		assert.Contains(t, help.String(), "Output is exactly one sparse editable user configuration file path and a newline")
-
-		root = newRootCmd(noopSetup(t))
-		var completion bytes.Buffer
-		root.SetArgs([]string{"__complete", configCmd, ""})
-		root.SetOut(&completion)
-		root.SetErr(&bytes.Buffer{})
-		require.NoError(t, root.Execute())
-		assert.Contains(t, completion.String(), "path\tPrint the configuration file path")
+		require.Error(t, root.Execute())
 	})
+
+	root := newRootCmd(noopSetup(t))
+	var help bytes.Buffer
+	root.SetArgs([]string{configCmd, "status", "--help"})
+	root.SetOut(&help)
+	root.SetErr(&bytes.Buffer{})
+	require.NoError(t, root.Execute())
+	assert.Contains(t, help.String(), "Inspect Homebrew, system, and user configuration files")
+
+	root = newRootCmd(noopSetup(t))
+	var completion bytes.Buffer
+	root.SetArgs([]string{"__complete", configCmd, ""})
+	root.SetOut(&completion)
+	root.SetErr(&bytes.Buffer{})
+	require.NoError(t, root.Execute())
+	assert.Contains(t, completion.String(), "status\tDiagnose configuration file layers")
+	assert.NotContains(t, completion.String(), "path\tPrint the configuration file path")
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestConfigCLI_InstanceMergeReadsResolvedListsAndWritesUserContribution(t *testing.T) {
+	xdgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdgHome)
+	packagePath := filepath.Join(t.TempDir(), "defaults.yaml")
+	require.NoError(t, os.WriteFile(packagePath, []byte(`icl:
+  instancesMerge: append
+  instances:
+    - name: package
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`), 0o400))
+	oldPackagePath := config.PackageConfigPath
+	config.PackageConfigPath = packagePath
+	t.Cleanup(func() { config.PackageConfigPath = oldPackagePath })
+
+	configDir := filepath.Join(xdgHome, "lognav")
+	require.NoError(t, os.MkdirAll(configDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "system.yaml"), []byte(`icl:
+  instances:
+    - name: system
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`), 0o600))
+	userPath := filepath.Join(configDir, "user.yaml")
+	require.NoError(t, os.WriteFile(userPath, []byte(`icl:
+  instances:
+    - name: user
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:user::'
+`), 0o600))
+
+	run := func(args ...string) (string, error) {
+		t.Helper()
+		root := newRootCmd(defaultSetup)
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs(append([]string{configCmd}, args...))
+		err := root.Execute()
+		return out.String(), err
+	}
+
+	out, err := run("get", "icl.instancesMerge")
+	require.NoError(t, err)
+	assert.Equal(t, "append\n", out)
+	out, err = run("show")
+	require.NoError(t, err)
+	assert.Contains(t, out, "instancesMerge: append")
+	assert.Contains(t, out, "name: package")
+	assert.Contains(t, out, "name: system")
+	assert.Contains(t, out, "name: user")
+	out, err = run("describe", "icl.instancesMerge")
+	require.NoError(t, err)
+	assert.Contains(t, out, `icl.instancesMerge (string) = "append"`)
+	assert.Contains(t, out, `default: "replace"`)
+
+	_, err = run("set", "icl.instances", "[{name: replacement, crn: 'crn:v1:bluemix:public:logs:us-south:a/account:replacement::'}]")
+	require.NoError(t, err)
+	user, err := os.ReadFile(userPath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	assert.Contains(t, string(user), "name: replacement")
+	assert.NotContains(t, string(user), "name: package")
+	assert.NotContains(t, string(user), "name: system")
+	out, err = run("get", "icl.instances")
+	require.NoError(t, err)
+	assert.Contains(t, out, "name: package")
+	assert.Contains(t, out, "name: system")
+	assert.Contains(t, out, "name: replacement")
+
+	_, err = run("unset", "icl.instances")
+	require.NoError(t, err)
+	out, err = run("get", "icl.instances")
+	require.NoError(t, err)
+	assert.Contains(t, out, "name: package")
+	assert.Contains(t, out, "name: system")
+	assert.NotContains(t, out, "name: replacement")
 }
 
 func TestNormalizeYAMLPath(t *testing.T) {

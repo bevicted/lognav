@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	configFileName = "config.yaml"
-	userConfigName = "user config"
-	CurrentVersion = 1
+	configFileName   = "user.yaml"
+	systemFileName   = "system.yaml"
+	userConfigName   = "user config"
+	systemConfigName = "system config"
+	CurrentVersion   = 1
 )
 
 // ErrUnknownConfigurationKey reports that a valid dotted key does not exist in
@@ -30,6 +32,8 @@ var ErrUnknownConfigurationKey = errors.New("unknown configuration key")
 // PackageConfigPath is an optional read-only defaults file stamped at build
 // time with -ldflags -X. Ordinary builds leave it empty.
 var PackageConfigPath = ""
+
+var xdgConfigPath = xdg.GetConfigPath
 
 // New returns a Config populated with the lognav default values.
 // Tests use this directly; production code calls LoadConfig() which falls
@@ -58,17 +62,25 @@ func NormalizeYAMLPath(arg string) string {
 }
 
 func GetConfigPath() (string, error) {
-	p, err := xdg.GetConfigPath()
+	p, err := xdgConfigPath()
 	if err != nil {
 		return "", fmt.Errorf("load config: resolve path: %w", err)
 	}
 	return path.Join(p, configFileName), nil
 }
 
-// LoadConfig reads public defaults, the optional stamped package defaults, and
-// $XDG_CONFIG_HOME/lognav/config.yaml in that order. Neither file is changed
-// while loading. Every error is wrapped with "load config:"; callers should
-// not wrap it again.
+func getSystemConfigPath() (string, error) {
+	p, err := xdgConfigPath()
+	if err != nil {
+		return "", fmt.Errorf("load config: resolve path: %w", err)
+	}
+	return path.Join(p, systemFileName), nil
+}
+
+// LoadConfig reads public defaults, optional stamped Homebrew defaults,
+// system.yaml, and user.yaml in that order. Neither file is changed while
+// loading. Every error is wrapped with "load config:"; callers should not wrap
+// it again.
 func LoadConfig() (*Config, error) {
 	logger := slog.Default().With(logging.KeyComponent, "config")
 	start := time.Now()
@@ -77,21 +89,26 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-
+	systemPath, err := getSystemConfigPath()
+	if err != nil {
+		return nil, err // already wrapped
+	}
+	systemBytes, err := readOptionalConfigFile(systemPath, systemConfigName)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
 	p, err := GetConfigPath()
 	if err != nil {
 		return nil, err // already wrapped
 	}
-	userBytes, err := os.ReadFile(p) // #nosec G304 -- xdg-resolved config path; not user-influenced
-	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("load config: read %s %s: %w", userConfigName, p, err)
-	}
-	if os.IsNotExist(err) {
-		userBytes = nil
+	userBytes, err := readOptionalConfigFile(p, userConfigName)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
 	}
 
 	cfg, err := configFromLayers(
 		configLayer{name: "package defaults", bytes: packageBytes},
+		configLayer{name: systemConfigName, bytes: systemBytes},
 		configLayer{name: userConfigName, bytes: userBytes},
 	)
 	if err != nil {
@@ -106,11 +123,22 @@ func readPackageConfig() ([]byte, error) {
 	if PackageConfigPath == "" {
 		return nil, nil
 	}
-	b, err := os.ReadFile(PackageConfigPath) // #nosec G304 -- build-stamped package path
+	b, err := readOptionalConfigFile(PackageConfigPath, "package defaults")
 	if err != nil {
-		return nil, fmt.Errorf("read package defaults %s: %w", PackageConfigPath, err)
+		return nil, err
 	}
 	return b, nil
+}
+
+func readOptionalConfigFile(p, name string) ([]byte, error) {
+	b, err := os.ReadFile(p) // #nosec G304 -- build-stamped or xdg-resolved config path
+	if err == nil {
+		return b, nil
+	}
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	return nil, fmt.Errorf("read %s %s: %w", name, p, err)
 }
 
 type configLayer struct {
@@ -121,14 +149,7 @@ type configLayer struct {
 // configFromLayers validates each supplied layer before merging mappings
 // recursively. Scalars and sequences replace lower-layer values.
 func configFromLayers(layers ...configLayer) (*Config, error) {
-	base, err := yaml.Marshal(New())
-	if err != nil {
-		return nil, err
-	}
-	merged, err := configDocument(base)
-	if err != nil {
-		return nil, err
-	}
+	documents := make([]map[string]any, 0, len(layers))
 	for _, layer := range layers {
 		if len(bytes.TrimSpace(layer.bytes)) == 0 {
 			continue
@@ -140,9 +161,41 @@ func configFromLayers(layers ...configLayer) (*Config, error) {
 			}
 			return nil, fmt.Errorf("%s: %w", layer.name, err)
 		}
-		mergeConfigMappings(merged, document)
+		documents = append(documents, document)
 	}
 
+	return configFromDocuments(documents...)
+}
+
+// configFromDocuments merges already sparse-layer-validated mappings onto the
+// built-in defaults and runs final effective configuration validation.
+func configFromDocuments(documents ...map[string]any) (*Config, error) {
+	base, err := yaml.Marshal(New())
+	if err != nil {
+		return nil, err
+	}
+	merged, err := configDocument(base)
+	if err != nil {
+		return nil, err
+	}
+	instanceLists, err := instanceListContributions(append([]map[string]any{merged}, documents...))
+	if err != nil {
+		return nil, err
+	}
+	for _, document := range documents {
+		mergeConfigMappings(merged, document)
+	}
+	icl, ok := merged["icl"].(map[string]any)
+	if !ok {
+		return nil, errors.New("icl must be a map")
+	}
+	if icl["instancesMerge"] == instanceMergeAppend {
+		instances := make([]any, 0)
+		for _, list := range instanceLists {
+			instances = append(instances, list...)
+		}
+		icl["instances"] = instances
+	}
 	b, err := yaml.Marshal(merged)
 	if err != nil {
 		return nil, err
@@ -167,6 +220,30 @@ func configDocument(b []byte) (map[string]any, error) {
 		return nil, errors.New("configuration document must be a map")
 	}
 	return document, nil
+}
+
+func instanceListContributions(documents []map[string]any) ([][]any, error) {
+	lists := make([][]any, 0, len(documents))
+	for _, document := range documents {
+		icl, present := document["icl"]
+		if !present {
+			continue
+		}
+		iclMapping, ok := icl.(map[string]any)
+		if !ok {
+			return nil, errors.New("icl must be a map")
+		}
+		instances, present := iclMapping["instances"]
+		if !present {
+			continue
+		}
+		list, ok := instances.([]any)
+		if !ok {
+			return nil, errors.New("icl.instances must be a list; use [] for no instances")
+		}
+		lists = append(lists, list)
+	}
+	return lists, nil
 }
 
 func mergeConfigMappings(base, overlay map[string]any) {
@@ -572,6 +649,11 @@ func validateICLShape(value any) error {
 	if !ok {
 		return errors.New("icl must be a map")
 	}
+	if mode, present := icl["instancesMerge"]; present {
+		if err := validateInstancesMerge(mode); err != nil {
+			return err
+		}
+	}
 	instances, present := icl["instances"]
 	if present {
 		entries, ok := instances.([]any)
@@ -595,6 +677,14 @@ func validateICLShape(value any) error {
 	return nil
 }
 
+func validateInstancesMerge(value any) error {
+	mode, ok := value.(string)
+	if !ok || (mode != instanceMergeReplace && mode != instanceMergeAppend) {
+		return errors.New(`icl.instancesMerge must be "replace" or "append"`)
+	}
+	return nil
+}
+
 func validateConfigBytes(b []byte) error {
 	_, err := configFromLayers(configLayer{name: "config", bytes: b})
 	return err
@@ -613,8 +703,8 @@ func setValueError(leaf FieldMeta, parsed any, norm string, err error) error {
 }
 
 // SetConfig applies an AST edit to the sparse user file and validates the
-// proposed document against public defaults and the optional package layer.
-// A missing file is created with the current version header.
+// proposed document against public defaults and the optional Homebrew and
+// system layers. A missing file is created with the current version header.
 func SetConfig(yamlPath, value string) error {
 	p, err := GetConfigPath()
 	if err != nil {
@@ -635,8 +725,17 @@ func SetConfig(yamlPath, value string) error {
 	if err != nil {
 		return err
 	}
+	systemPath, err := getSystemConfigPath()
+	if err != nil {
+		return err
+	}
+	systemBytes, err := readOptionalConfigFile(systemPath, systemConfigName)
+	if err != nil {
+		return err
+	}
 	if _, err := configFromLayers(
 		configLayer{name: "package defaults", bytes: packageBytes},
+		configLayer{name: systemConfigName, bytes: systemBytes},
 		configLayer{name: userConfigName, bytes: out},
 	); err != nil {
 		return setValueError(leaf, parsed, norm, err)
@@ -645,7 +744,7 @@ func SetConfig(yamlPath, value string) error {
 }
 
 // UnsetConfig removes one user override and validates the proposed document
-// against its package base. A missing user file is a no-op success.
+// against its Homebrew and system base. A missing user file is a no-op success.
 func UnsetConfig(yamlPath string) error {
 	p, err := GetConfigPath()
 	if err != nil {
@@ -666,8 +765,17 @@ func UnsetConfig(yamlPath string) error {
 	if err != nil {
 		return err
 	}
+	systemPath, err := getSystemConfigPath()
+	if err != nil {
+		return err
+	}
+	systemBytes, err := readOptionalConfigFile(systemPath, systemConfigName)
+	if err != nil {
+		return err
+	}
 	if _, err := configFromLayers(
 		configLayer{name: "package defaults", bytes: packageBytes},
+		configLayer{name: systemConfigName, bytes: systemBytes},
 		configLayer{name: userConfigName, bytes: out},
 	); err != nil {
 		return fmt.Errorf("unset %q produced invalid config: %w", norm, err)

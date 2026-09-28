@@ -443,6 +443,7 @@ func TestExecute_ConfigIndependentCommandsBypassBrokenConfig(t *testing.T) {
 		{"version", []string{"version"}},
 		{"instruct", []string{"instruct"}},
 		{"config group", []string{"config"}},
+		{"config status", []string{"config", "status"}},
 		{"config set", []string{"config", "set", "core.enableMouse", "false"}},
 		{"config unset", []string{"config", "unset", "core.enableMouse"}},
 		{"config edit", []string{"config", "edit"}},

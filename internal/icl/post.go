@@ -15,10 +15,8 @@ import (
 	"github.com/bevicted/lognav/internal/logging"
 )
 
-// queryHTTPClient serves every ICL data-plane POST (sync query, background submit /
-// status / cancel, background data download). It has NO overall Timeout — an SSE stream
-// and a 1M-row NDJSON download are both long-lived — so cancellation comes solely from
-// the request context (clampCtx / clampCtxBackground, plus any shorter caller deadline).
+// queryHTTPClient serves every ICL data-plane request. It has no overall timeout because
+// SSE streams can be long-lived; cancellation comes from the request context.
 var queryHTTPClient = &http.Client{}
 
 // errBodyReadLimit caps how much of a non-2xx response body postJSON reads to build the
@@ -27,10 +25,9 @@ var queryHTTPClient = &http.Client{}
 // a readable multi-line compile error into a truncated JSON blob.
 const errBodyReadLimit = 1 << 16
 
-// httpStatusError is the typed error postJSON returns for a non-2xx response. It carries
-// the HTTP status so callers can distinguish a genuine 404 (not-found/expired) from a
-// transient 4xx/5xx WITHOUT substring-matching the reason text. Callers wrap it with %w,
-// which keeps both their user-facing prefix and errors.As reachability.
+// httpStatusError is the typed error returned for a non-2xx response. It carries the HTTP
+// status so callers can distinguish a genuine 404 from transient failures. Callers wrap
+// it with %w, preserving errors.As reachability.
 type httpStatusError struct {
 	status int
 	reason string
@@ -77,36 +74,45 @@ func IsQueryServiceUnavailable(err error) bool {
 	return errors.As(err, &netErr)
 }
 
-// postJSON is the single JSON POST path of the ICL client: marshal -> request -> standard
-// headers (auth included) -> status check -> error body. accept selects the response
-// encoding the caller wants (text/event-stream, application/json, application/x-ndjson).
-//
-// Body ownership: on success the response is returned with its body still OPEN and the
-// CALLER must close it. On every failure — marshal, request build, transport, non-2xx —
-// the returned response is nil and postJSON has already closed the body itself (it reads
-// the body to build the error reason). Callers therefore neither leak a body nor
-// double-close one; the shape is always
-//
-//	resp, err := postJSON(...)
-//	if err != nil { return err }
-//	defer resp.Body.Close()
+// postJSON sends an authenticated JSON POST. On success the caller owns the response body;
+// on failure the response body has already been closed.
 func postJSON(ctx context.Context, token, fullURL, accept string, body any) (*http.Response, error) {
 	payload, err := jsonutil.API.Marshal(body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+	resp, err := doQueryRequest(ctx, http.MethodPost, token, fullURL, accept, "application/json", bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	return resp, nil
+}
+
+// requestNoBody sends an authenticated request without a body. On success the caller owns
+// the response body; on failure the response body has already been closed.
+func requestNoBody(ctx context.Context, method, token, fullURL, accept string) (*http.Response, error) {
+	resp, err := doQueryRequest(ctx, method, token, fullURL, accept, "", nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+	return resp, nil
+}
+
+func doQueryRequest(ctx context.Context, method, token, fullURL, accept, contentType string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
 	req.Header.Set("Accept", accept)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", lognavUserAgent)
 
-	resp, err := queryHTTPClient.Do(req) // no client Timeout; ctx governs
+	resp, err := queryHTTPClient.Do(req) // no client timeout; ctx governs
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w", err)
 	}
 	if !isHTTPErr(resp.StatusCode) {
 		return resp, nil
@@ -117,9 +123,10 @@ func postJSON(ctx context.Context, token, fullURL, accept string, body any) (*ht
 	// CRLF / ANSI control bytes from a hostile or buggy endpoint, so errReasonFromBody
 	// sanitizes control runes before it is surfaced; the raw body is Debug-logged here for
 	// diagnostics.
-	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyReadLimit))
-	_ = resp.Body.Close()
+	snippet, readErr := io.ReadAll(io.LimitReader(resp.Body, errBodyReadLimit))
+	closeErr := resp.Body.Close()
 	slog.Default().With(logging.KeyComponent, "icl").
-		Debug("non-2xx body", "url", fullURL, "status", resp.StatusCode, "body", string(snippet))
+		Debug("non-2xx body", "url", fullURL, "status", resp.StatusCode, "body", string(snippet),
+			"read_error", readErr, "close_error", closeErr)
 	return nil, &httpStatusError{status: resp.StatusCode, reason: errReasonFromBody(snippet)}
 }

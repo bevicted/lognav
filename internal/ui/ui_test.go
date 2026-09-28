@@ -78,6 +78,17 @@ func TestUIModel_Close_Idempotent(t *testing.T) {
 	})
 }
 
+func TestModel_ApplyEnvAPIKey(t *testing.T) {
+	bundle := depstest.NewTest(t)
+	m, err := New(t.Context(), bundle)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, m.Close()) })
+
+	m.ApplyEnv([]string{"IC_API_KEY=environment-key"})
+
+	assert.Equal(t, "environment-key", bundle.Config.ICL.Environments["bluemix"].APIKey)
+}
+
 func TestModel_DrawTo_ReturnsNilOnEmptySize(t *testing.T) {
 	t.Parallel()
 

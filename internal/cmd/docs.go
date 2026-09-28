@@ -2,15 +2,12 @@ package cmd
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
-	"os/exec"
 	pathpkg "path"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -18,28 +15,11 @@ import (
 
 	"github.com/bevicted/lognav/docs"
 	"github.com/bevicted/lognav/internal/build"
+	"github.com/bevicted/lognav/internal/openurl"
 )
 
-// openBrowser launches the platform's default opener on url and waits for it to
-// finish. The openers (open/xdg-open/cmd start) return promptly once they have
-// handed the URL off, so waiting is cheap — and necessary: the caller's context
-// is cancelled the moment the command returns (Execute's signal context), so a
-// fire-and-forget Start() would let that cancellation SIGKILL the opener before
-// it dispatches. It is a package var so tests can substitute a hermetic stub
-// (mirrors clipboardRead in internal/ui).
-var openBrowser = func(ctx context.Context, url string) error {
-	var name string
-	var args []string
-	switch runtime.GOOS {
-	case "darwin":
-		name, args = "open", []string{url}
-	case "windows":
-		name, args = "cmd", []string{"/c", "start", url}
-	default:
-		name, args = "xdg-open", []string{url}
-	}
-	return exec.CommandContext(ctx, name, args...).Run() //nolint:gosec // name is one of three hardcoded platform opener paths
-}
+// openBrowser is a package var so command tests can substitute a hermetic stub.
+var openBrowser = openurl.Open
 
 // docsURL builds the GHE permalink for a docs topic at the given ref. An empty
 // topic resolves to the documentation index page.

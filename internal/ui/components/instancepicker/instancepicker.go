@@ -18,6 +18,7 @@ import (
 	"github.com/bevicted/lognav/internal/deps"
 	"github.com/bevicted/lognav/internal/icl"
 	"github.com/bevicted/lognav/internal/logging"
+	"github.com/bevicted/lognav/internal/openurl"
 	"github.com/bevicted/lognav/internal/snapshot"
 	"github.com/bevicted/lognav/internal/state"
 	"github.com/bevicted/lognav/internal/ui/components/component"
@@ -151,6 +152,7 @@ type Model struct {
 	list             *list.Model
 	send             func(uv.Event)
 	poster           msgs.Poster
+	openBrowser      func(context.Context, string) error
 	queryStartTime   time.Time
 	logger           *slog.Logger
 	backingContainer *snapshot.Container    // .wip file during fetch
@@ -731,6 +733,7 @@ func New(ctx context.Context, bundle deps.Bundle) *Model {
 		list:             list.New(bundle).WithItems(make([][]list.Segment, len(instances))),
 		instances:        instances,
 		authManager:      am,
+		openBrowser:      openurl.Open,
 		logger:           slog.Default().With(logging.KeyComponent, "instancepicker"),
 		lastSavedSession: loadedSession,
 		pendingLoads:     map[string]struct{}{},
@@ -1001,7 +1004,7 @@ func (m *Model) OnPasscodeRequired(msg PasscodeRequiredMsg) {
 	if m.firstFetchCandidates != nil && m.firstFetchWinner != "" {
 		return
 	}
-	passcodeDialogCmd(m.ctx, m.poster, m.authManager, msg.Pr)
+	passcodeDialogCmd(m.ctx, m.poster, m.authManager, msg.Pr, m.bundle.Config.Core.OpenBrowser, m.openBrowser)
 }
 
 // resumeEnvAuth re-runs per-env resolution for an env's still-AuthInProgress
@@ -2141,7 +2144,14 @@ func (m *Model) finalizeBackingContainer() error {
 // button Cmd on the loop goroutine, where a blocking network call would stall
 // dispatch. Cancellation (button or OnCancel) also runs on the loop when the
 // dialog dismisses, so PasscodeCancelledMsg is posted off-loop too.
-func passcodeDialogCmd(ctx context.Context, p msgs.Poster, am *icl.AccountManager, pr *icl.PasscodeRequired) {
+func passcodeDialogCmd(
+	ctx context.Context,
+	p msgs.Poster,
+	am *icl.AccountManager,
+	pr *icl.PasscodeRequired,
+	shouldOpenBrowser bool,
+	openBrowser func(context.Context, string) error,
+) {
 	in := uiinput.New()
 	in.SetMasked(true)
 	in.SetMaxLen(10)
@@ -2181,6 +2191,13 @@ func passcodeDialogCmd(ctx context.Context, p msgs.Poster, am *icl.AccountManage
 		OnCancel: cancel,
 	}
 	msgs.PostAsync(p, dlg)
+	if shouldOpenBrowser && openBrowser != nil && p != nil {
+		p.Go(func(openCtx context.Context) {
+			if err := openBrowser(openCtx, passcodeURL); err != nil {
+				slog.Warn("could not open passcode browser", logging.KeyComponent, "instancepicker", logging.KeyError, err)
+			}
+		})
+	}
 }
 
 // watchCapHit reports whether the watch has reached its fetch-count or

@@ -74,7 +74,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 				"Use `lognav -- <name>` when a snapshot name conflicts with a subcommand.",
 				"`--adopt` cannot be used with a name or `latest`",
 				"fails rather than overwriting an existing snapshot.",
-				"config's `path`, `set`, `unset`, and `edit` remain available when config.yaml is invalid.",
+				"config's `status`, `set`, `unset`, and `edit` remain available when user.yaml is invalid.",
 				"lognav --adopt ~/Downloads/demo.lognav",
 			},
 		},
@@ -94,7 +94,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			args: []string{"version"},
 			want: []string{
 				"config and snapshot formats it supports.",
-				"`lognav --version` and `lognav -v` print the text form without reading config.yaml.",
+				"`lognav --version` and `lognav -v` print the text form without reading user.yaml.",
 			},
 		},
 		{
@@ -111,15 +111,16 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			name: "config behavior",
 			args: []string{"config"},
 			want: []string{
-				"Configuration reads merge public defaults, optional read-only package defaults, and sparse user YAML overrides.",
-				"remain available when config.yaml is missing or invalid.",
+				"Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides.",
+				"`icl.instancesMerge` resolves once across all layers",
+				"remain available when user.yaml is missing or invalid.",
 			},
 		},
 		{
 			name: "config show effective only",
 			args: []string{"config", "show"},
 			want: []string{
-				"display-only and cannot be edited or round-tripped as config.yaml.",
+				"display-only and cannot be edited or round-tripped as user.yaml.",
 				"merged values, redacted secrets, and computed values",
 				"lognav config show -o json",
 			},
@@ -129,7 +130,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			args: []string{"config", "get"},
 			want: []string{
 				"Missing keys are errors.",
-				"`icl.instances` is the writable list of configured targets",
+				"`icl.instances` reports the resolved configured targets",
 			},
 		},
 		{
@@ -145,6 +146,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			want: []string{
 				"rejected values do not change the file.",
 				"An invalid value can be replaced in an otherwise invalid file",
+				"`icl.instances` writes only the user's contribution",
 				"preserving comments and other fields.",
 			},
 		},
@@ -152,17 +154,17 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			name: "config unset defaults",
 			args: []string{"config", "unset"},
 			want: []string{
-				"inherited package or public default applies afterward.",
+				"inherited system, Homebrew, or public default applies afterward.",
 				"An absent field is a no-op.",
 				"An invalid value can be removed from an otherwise invalid file",
 			},
 		},
 		{
-			name: "config path safe lookup",
-			args: []string{"config", "path"},
+			name: "config status diagnostics",
+			args: []string{"config", "status"},
 			want: []string{
-				"Output is exactly one sparse editable user configuration file path and a newline, never the read-only package defaults path.",
-				"does not load, validate, or create the file or its parent directory",
+				"Inspect Homebrew, system, and user configuration files without loading runtime services or changing files.",
+				"sparse-layer state and explicit key count",
 			},
 		},
 		{
