@@ -291,6 +291,7 @@ func TestInstances_ResolveTokens_PrologueOnLoop(t *testing.T) {
 	enabled.Enable()
 	enabled.flushedLogCount = 1
 	enabled.flushedLogsSize = 42
+	enabled.Store.SetMessage("previous authentication failure")
 	disabled.Disable()
 	insts := Instances{enabled, disabled}
 
@@ -303,6 +304,7 @@ func TestInstances_ResolveTokens_PrologueOnLoop(t *testing.T) {
 	assert.False(t, insts.AreAllQueriesDone(), "AreAllQueriesDone must see the AuthInProgress instance")
 	assert.NotEqual(t, status.AuthInProgress, disabled.state, "disabled instance must not be AuthInProgress")
 	assert.Zero(t, enabled.flushedLogsSize, "a new fetch must clear the previous durable size")
+	assert.Empty(t, enabled.Store.GetMessage(), "a new fetch must clear the previous authentication failure")
 
 	// One env (EnvProd) -> exactly one tracked goroutine; nothing posted yet.
 	require.Len(t, dp.spawned, 1, "ResolveTokens must spawn one poster.Go per env")

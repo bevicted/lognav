@@ -597,13 +597,16 @@ func (i Instances) SetAll(b bool) {
 // env when non-empty. Terminal targets (Error/Cancelled) freeze the elapsed
 // timer; Enabled (passcode cancel) resets it. AuthInProgress is the pre-query
 // placeholder set by ResolveTokens; this settles it once auth resolves/fails.
-func (i Instances) TransitionAuthing(env icl.Environment, to status.Phase) {
+func (i Instances) TransitionAuthing(env icl.Environment, to status.Phase, message string) {
 	for _, instance := range i {
 		if instance.state != status.AuthInProgress {
 			continue
 		}
 		if env != "" && instance.env != env {
 			continue
+		}
+		if message != "" {
+			instance.Store.SetMessage(message)
 		}
 		switch to {
 		case status.Error, status.Cancelled:
