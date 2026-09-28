@@ -14,20 +14,10 @@ change before the first major release.
 
 ## Install
 
-Build from the public source repository:
+Install the public module with Go:
 
 ```sh
-git clone https://github.com/bevicted/lognav.git
-cd lognav
-mkdir -p bin
-go build -trimpath -o bin/lognav .
-./bin/lognav completion --install
-```
-
-After a release is available, install the public module instead:
-
-```sh
-go install -trimpath github.com/bevicted/lognav@latest
+go install github.com/bevicted/lognav@latest
 lognav completion --install
 ```
 
@@ -39,8 +29,8 @@ shell session after installation.
 
 Configure at least one IBM Cloud Logs instance before querying. `icl.instances`
 is a writable list; use `[]` when you intentionally want no instances. Run
-`./bin/lognav config status` to find and diagnose the editable `user.yaml` path,
-then save this configuration there:
+`lognav config status` to find and diagnose the editable `user.yaml` path, then
+save this configuration there:
 
 ```yaml
 version: 1
@@ -58,23 +48,20 @@ manually without overwriting either file.
 
 `config status` reports Homebrew, system, and user file layers as `valid`,
 `missing`, or `error`, followed by effective validation. Scripts can read the
-editable path from the `user` record in `./bin/lognav config status -o json`.
+editable path from the `user` record in `lognav config status -o json`.
 
 An API key is not required: start lognav and use the IAM browser/passcode flow
 when prompted.
 
 ```sh
-./bin/lognav
+lognav
 ```
 
 To authenticate before opening the TUI, use the standalone login command:
 
 ```sh
-./bin/lognav login
+lognav login
 ```
-
-The quick-start commands use the `./bin/lognav` binary built above. If you
-installed with `go install`, use `lognav` instead.
 
 See [Authentication](user/authentication.md) for saved-session behavior and
 optional API-key or 1Password configuration. Edit the rest of your configuration
@@ -106,18 +93,19 @@ Press `?` in the TUI for context-sensitive keybindings.
 For development, see [CONTRIBUTING](CONTRIBUTING.md) and
 [design documentation](dev/design/).
 
-## Community
-
-Questions, bugs, feature requests, and discussion belong in the
-[lognav repository](https://github.com/bevicted/lognav).
-
-## License
-
-lognav is licensed under the [Apache License 2.0](../LICENSE).
-
 ## Additional resources
 
 - [jq cheat sheet](https://cht.sh/jq)
 - [Dataprime examples](https://cloud.ibm.com/docs/cloud-logs?topic=cloud-logs-dataprime-qs)
 - [Dataprime reference](https://cloud.ibm.com/docs/cloud-logs?topic=cloud-logs-dataprime-ref)
 - [Dataprime nvim parser](https://github.com/smrtrfszm/dataprime.nvim)
+
+## Build locally
+
+```sh
+git clone https://github.com/bevicted/lognav.git
+cd lognav
+mkdir -p bin
+go build -o bin/lognav .
+./bin/lognav completion --install
+```

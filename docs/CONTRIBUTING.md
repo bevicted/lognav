@@ -17,7 +17,7 @@ just ci           # the pre-push gate: build + fmt-check + lint + vuln
 Individual recipes:
 
 ```bash
-just build                # go build -trimpath -o bin/lognav .
+just build                # go build -o bin/lognav .
 just test                 # go test with coverage profile
 just vuln                 # scan reachable Go code, all Go modules, and Bun deps
 just run <subcommand>     # build to a temp path (stamps VCS version) and exec
