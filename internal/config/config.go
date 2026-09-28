@@ -196,6 +196,7 @@ func configFromDocuments(documents ...map[string]any) (*Config, error) {
 		}
 		icl["instances"] = instances
 	}
+	defaultEnvironmentAPIKeyEnvVars(icl)
 	b, err := yaml.Marshal(merged)
 	if err != nil {
 		return nil, err
@@ -244,6 +245,24 @@ func instanceListContributions(documents []map[string]any) ([][]any, error) {
 		lists = append(lists, list)
 	}
 	return lists, nil
+}
+
+// defaultEnvironmentAPIKeyEnvVars supplies the selector only when it is absent
+// after sparse layers merge, preserving explicit empty and custom values.
+func defaultEnvironmentAPIKeyEnvVars(icl map[string]any) {
+	environments, ok := icl["environments"].(map[string]any)
+	if !ok {
+		return
+	}
+	for _, value := range environments {
+		environment, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, present := environment["apiKeyEnvVar"]; !present {
+			environment["apiKeyEnvVar"] = "IC_API_KEY"
+		}
+	}
 }
 
 func mergeConfigMappings(base, overlay map[string]any) {

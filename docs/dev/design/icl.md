@@ -38,8 +38,10 @@ An `AccountManager` resolves credentials independently for every configured
 `icl.environments` CName. Within an environment it derives the account from the
 full CRN. A usable cached access token for that account is returned first.
 Otherwise, a persisted refresh token is tried before the configured API key and
-1Password API-key reference. Production `bluemix` alone may be overridden by
-`IC_API_KEY`.
+1Password API-key reference. Every environment defaults `apiKeyEnvVar` to
+`IC_API_KEY`; a custom selector replaces that variable, an explicit empty
+selector disables lookup, and an unset or empty selected variable leaves
+configured credentials available.
 
 Refresh exchanges omit the optional IAM `account` form field, matching IBM's
 SDK refresh flow; the resulting access token is still cached under the target

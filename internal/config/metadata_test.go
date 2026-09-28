@@ -247,8 +247,8 @@ func TestRedactsAPIKeys(t *testing.T) {
 	cfg := New()
 	// #nosec G101 -- synthetic credentials exercise configuration redaction.
 	cfg.ICL.Environments = map[string]ICLEnvironmentConfig{
-		"bluemix": {IAMURL: "https://iam.example/identity", APIKey: "prod-secret", APIKeyOpRef: "op://vault/prod"},
-		"test":    {IAMURL: "https://iam.example/test", APIKey: "test-secret", APIKeyOpRef: "op://vault/test"},
+		"bluemix": {IAMURL: "https://iam.example/identity", APIKey: "prod-secret", APIKeyEnvVar: "PROD_API_KEY", APIKeyOpRef: "op://vault/prod"},
+		"test":    {IAMURL: "https://iam.example/test", APIKey: "test-secret", APIKeyEnvVar: "TEST_API_KEY", APIKeyOpRef: "op://vault/test"},
 	}
 
 	metas := GetFieldMetadata(cfg, "$.icl")
@@ -259,6 +259,7 @@ func TestRedactsAPIKeys(t *testing.T) {
 	bluemix, ok := records["bluemix"]
 	require.True(t, ok)
 	assert.Equal(t, "redacted", bluemix.APIKey)
+	assert.Equal(t, "PROD_API_KEY", bluemix.APIKeyEnvVar)
 	assert.Equal(t, "op://vault/prod", bluemix.APIKeyOpRef)
 
 	yml, err := GetConfig(cfg, "$.icl")
@@ -266,6 +267,8 @@ func TestRedactsAPIKeys(t *testing.T) {
 	assert.NotContains(t, yml, "prod-secret")
 	assert.NotContains(t, yml, "test-secret")
 	assert.Contains(t, yml, "op://vault/prod")
+	assert.Contains(t, yml, "PROD_API_KEY")
+	assert.Contains(t, yml, "TEST_API_KEY")
 	assert.Equal(t, "prod-secret", cfg.ICL.Environments["bluemix"].APIKey)
 }
 

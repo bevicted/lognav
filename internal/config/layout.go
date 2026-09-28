@@ -17,7 +17,7 @@ const (
 
 // newConfig inits a Config object with default values.
 //
-//nolint:funlen // single literal initializing all default config fields; splitting harms readability.
+//nolint:funlen,gosec // single literal initializing all default config fields; splitting harms readability. API-key selectors are environment variable names.
 func newConfig() *Config {
 	// include configs even if the default empty value is used
 	return &Config{
@@ -150,7 +150,7 @@ func newConfig() *Config {
 			InstancesMerge: instanceMergeReplace,
 			Instances:      []ICLInstanceConfig{},
 			Environments: map[string]ICLEnvironmentConfig{
-				"bluemix": {IAMURL: "https://iam.cloud.ibm.com/identity"},
+				"bluemix": {IAMURL: "https://iam.cloud.ibm.com/identity", APIKeyEnvVar: "IC_API_KEY"},
 			},
 			DefaultQuery: `source logs between @'{{ date -1 }}' and @'now'
 | filter $l.subsystemname == 'example-service'
@@ -448,9 +448,20 @@ type ICL struct {
 // ICLEnvironmentConfig supplies one IAM discovery endpoint and its optional
 // noninteractive credentials. APIKeyOpRef is a 1Password reference, not a secret.
 type ICLEnvironmentConfig struct {
-	IAMURL      string `yaml:"iamURL"      desc:"IAM OIDC discovery URL"`
-	APIKey      string `yaml:"apiKey"      desc:"IBM Cloud API key"`
-	APIKeyOpRef string `yaml:"apiKeyOpRef" desc:"1Password secret reference for IBM Cloud API key"`
+	IAMURL       string `yaml:"iamURL"       desc:"IAM OIDC discovery URL"`
+	APIKey       string `yaml:"apiKey"       desc:"IBM Cloud API key"`
+	APIKeyEnvVar string `yaml:"apiKeyEnvVar" desc:"environment variable that overrides apiKey"`
+	APIKeyOpRef  string `yaml:"apiKeyOpRef"  desc:"1Password secret reference for IBM Cloud API key"`
+}
+
+// APIKeyEnvOverride returns the nonempty API key selected by APIKeyEnvVar.
+// An empty selector or value leaves configured credentials unchanged.
+func (c ICLEnvironmentConfig) APIKeyEnvOverride(getenv func(string) string) (string, bool) {
+	if c.APIKeyEnvVar == "" {
+		return "", false
+	}
+	key := getenv(c.APIKeyEnvVar)
+	return key, key != ""
 }
 
 // EffectiveInstances returns a distinct, non-nil copy of the configured

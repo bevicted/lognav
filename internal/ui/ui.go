@@ -576,16 +576,19 @@ func (m *Model) loadSnapshot(path string) {
 }
 
 // ApplyEnv ingests the process environment at startup (the seed replacement for
-// the old environment event arm). It picks up the ICL API key so a remote-session
-// environment (e.g. SSH) reaches the config and the instance picker.
+// the old environment event arm). It applies each configured environment's
+// selected API-key variable to both effective config and the instance picker.
 func (m *Model) ApplyEnv(env []string) {
-	if v := uv.Environ(env).Getenv("IC_API_KEY"); v != "" {
-		m.logger.Debug("set production config api key via env", "secret length", len(v))
-		if production, ok := m.bundle.Config.ICL.Environments[string(icl.EnvProd)]; ok {
-			production.APIKey = v
-			m.bundle.Config.ICL.Environments[string(icl.EnvProd)] = production
+	getenv := uv.Environ(env).Getenv
+	for cname, environment := range m.bundle.Config.ICL.Environments {
+		key, ok := environment.APIKeyEnvOverride(getenv)
+		if !ok {
+			continue
 		}
-		m.instances.SetAPIKey(icl.EnvProd, v)
+		m.logger.Debug("set config api key via env", "environment", cname, "secret length", len(key))
+		environment.APIKey = key
+		m.bundle.Config.ICL.Environments[cname] = environment
+		m.instances.SetAPIKey(icl.Environment(cname), key)
 	}
 }
 

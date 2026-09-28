@@ -32,8 +32,7 @@ import (
 type Environment string
 
 const (
-	// EnvProd is the public production environment. IC_API_KEY only overrides
-	// credentials for this environment.
+	// EnvProd is the public production environment.
 	EnvProd Environment = "bluemix"
 
 	// bxbxAuth is base64("bx:bx") — the IBM Cloud public client credentials
