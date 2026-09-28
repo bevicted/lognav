@@ -112,6 +112,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			args: []string{"config"},
 			want: []string{
 				"Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides.",
+				"`icl.instancesMerge` resolves once across all layers",
 				"remain available when user.yaml is missing or invalid.",
 			},
 		},
@@ -129,7 +130,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			args: []string{"config", "get"},
 			want: []string{
 				"Missing keys are errors.",
-				"`icl.instances` is the writable list of configured targets",
+				"`icl.instances` reports the resolved configured targets",
 			},
 		},
 		{
@@ -145,6 +146,7 @@ func TestCoreCommandHelpContracts(t *testing.T) {
 			want: []string{
 				"rejected values do not change the file.",
 				"An invalid value can be replaced in an otherwise invalid file",
+				"`icl.instances` writes only the user's contribution",
 				"preserving comments and other fields.",
 			},
 		},

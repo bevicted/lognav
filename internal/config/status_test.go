@@ -61,6 +61,34 @@ func TestInspectStatus_FileErrorsDoNotHideEachOtherOrSecrets(t *testing.T) {
 }
 
 //nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestInspectStatus_InstanceMergeReportsLayerAndEffectiveErrors(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	usePackageConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: duplicate
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`)
+	writeSystemConfig(t, `icl:
+  instances:
+    - name: duplicate
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`)
+	writeUserConfig(t, "icl:\n  instancesMerge: invalid\n")
+
+	report := InspectStatus()
+	assert.Equal(t, statusError, report.Files[2].State)
+	assert.Equal(t, statusError, report.Effective.State)
+	assert.Equal(t, []string{"one or more file layers could not be inspected"}, report.Effective.Errors)
+
+	writeUserConfig(t, "icl:\n  instancesMerge: append\n")
+	report = InspectStatus()
+	assert.Equal(t, statusValid, report.Files[2].State)
+	assert.Equal(t, statusError, report.Effective.State)
+	assert.Equal(t, []string{"invalid effective configuration"}, report.Effective.Errors)
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
 func TestInspectStatus_MissingAndLeafCounts(t *testing.T) {
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", xdgHome)

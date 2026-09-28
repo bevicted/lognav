@@ -123,6 +123,122 @@ core:
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestLoadConfig_InstanceMergeUsesOneFinalPolicy(t *testing.T) {
+	// PackageConfigPath and XDG_CONFIG_HOME are process-global.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	usePackageConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: package
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`)
+	writeSystemConfig(t, `icl:
+  instancesMerge: replace
+  instances:
+    - name: system
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`)
+	writeUserConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: user
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:user::'
+`)
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"package", "system", "user"}, instanceNames(cfg.ICL.Instances),
+		"the final append policy must reinterpret every supplied list, not append only after the system replace")
+
+	writeUserConfig(t, `icl:
+  instancesMerge: replace
+  instances:
+    - name: user
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:user::'
+`)
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"user"}, instanceNames(cfg.ICL.Instances))
+}
+
+func instanceNames(instances []ICLInstanceConfig) []string {
+	names := make([]string, 0, len(instances))
+	for _, instance := range instances {
+		names = append(names, instance.Name)
+	}
+	return names
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestLoadConfig_InstanceMergeModeOnlyEmptyAndLowerChanges(t *testing.T) {
+	// PackageConfigPath and XDG_CONFIG_HOME are process-global.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	usePackageConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: package
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`)
+	writeSystemConfig(t, `icl:
+  instances:
+    - name: system
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`)
+	writeUserConfig(t, "icl:\n  instancesMerge: append\n  instances: []\n")
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"package", "system"}, instanceNames(cfg.ICL.Instances))
+
+	writeUserConfig(t, "icl:\n  instancesMerge: replace\n  instances: []\n")
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.ICL.Instances)
+	assert.Empty(t, cfg.ICL.Instances)
+
+	writeSystemConfig(t, `icl:
+  instances:
+    - name: updated-system
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:updated-system::'
+`)
+	writeUserConfig(t, "icl:\n  instancesMerge: append\n")
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"package", "updated-system"}, instanceNames(cfg.ICL.Instances))
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestLoadConfig_InstanceMergeSystemAndUserWithoutPackage(t *testing.T) {
+	// PackageConfigPath and XDG_CONFIG_HOME are process-global.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	old := PackageConfigPath
+	PackageConfigPath = ""
+	t.Cleanup(func() { PackageConfigPath = old })
+	writeSystemConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: system
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`)
+	writeUserConfig(t, `icl:
+  instances:
+    - name: user
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:user::'
+`)
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"system", "user"}, instanceNames(cfg.ICL.Instances))
+
+	writeSystemConfig(t, "icl:\n  instancesMerge: append\n  instances: []\n")
+	writeUserConfig(t, "icl:\n  instances: []\n")
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	assert.NotNil(t, cfg.ICL.Instances)
+	assert.Empty(t, cfg.ICL.Instances)
+}
+
 func TestLoadConfig_AbsentAndEmptyLayersAreOptional(t *testing.T) {
 	// PackageConfigPath and XDG_CONFIG_HOME are process-global.
 	xdgHome := t.TempDir()
@@ -263,6 +379,35 @@ icl:
 			},
 			want: `icl.environments."test-cloud" must be a record`,
 		},
+		{
+			name: "invalid package mode cannot be hidden by user",
+			layers: []configLayer{
+				{name: "package defaults", bytes: []byte("icl:\n  instancesMerge: invalid\n")},
+				{name: "user config", bytes: []byte("icl:\n  instancesMerge: append\n")},
+			},
+			want: `icl.instancesMerge must be "replace" or "append"`,
+		},
+		{
+			name: "explicit nonstring modes are rejected",
+			layers: []configLayer{
+				{name: "user config", bytes: []byte("icl:\n  instancesMerge: 1\n")},
+			},
+			want: `icl.instancesMerge must be "replace" or "append"`,
+		},
+		{
+			name: "explicit empty string mode is rejected",
+			layers: []configLayer{
+				{name: "user config", bytes: []byte("icl:\n  instancesMerge: ''\n")},
+			},
+			want: `icl.instancesMerge must be "replace" or "append"`,
+		},
+		{
+			name: "explicit null mode is rejected",
+			layers: []configLayer{
+				{name: "user config", bytes: []byte("icl:\n  instancesMerge: \n")},
+			},
+			want: `icl.instancesMerge must be "replace" or "append"`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,6 +416,132 @@ icl:
 			require.ErrorContains(t, err, tt.want)
 		})
 	}
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestLoadConfig_InstanceMergeValidatesAdditiveCollisions(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	usePackageConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: duplicate
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`)
+	writeSystemConfig(t, `icl:
+  instances:
+    - name: duplicate
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`)
+	writeUserConfig(t, "icl:\n  instancesMerge: append\n")
+
+	cfg, err := LoadConfig()
+	require.ErrorContains(t, err, `duplicate effective instance name "duplicate"`)
+	assert.Nil(t, cfg)
+
+	writeSystemConfig(t, `icl:
+  instances:
+    - name: distinct
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`)
+	cfg, err = LoadConfig()
+	require.ErrorContains(t, err, "duplicate effective instance CRN")
+	assert.Nil(t, cfg)
+
+	writeUserConfig(t, `icl:
+  instancesMerge: replace
+  instances:
+    - name: user
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:user::'
+`)
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"user"}, instanceNames(cfg.ICL.Instances))
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestSetAndUnsetConfig_InstanceMergePreservesUserContribution(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	packagePath := usePackageConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: package
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`)
+	systemPath := writeSystemConfig(t, `icl:
+  instances:
+    - name: system
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`)
+	userPath := writeUserConfig(t, `# retain this comment
+icl:
+  instancesMerge: append
+  environments:
+    bluemix:
+      apiKey: user-key
+  instances:
+    - name: user
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:user::'
+`)
+	packageBefore, err := os.ReadFile(packagePath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	systemBefore, err := os.ReadFile(systemPath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+
+	require.NoError(t, SetConfig("icl.instances", "[{name: replacement, crn: 'crn:v1:bluemix:public:logs:us-south:a/account:replacement::'}]"))
+	user, err := os.ReadFile(userPath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	assert.Contains(t, string(user), "# retain this comment")
+	assert.Contains(t, string(user), "apiKey: user-key")
+	assert.Contains(t, string(user), "name: replacement")
+	assert.NotContains(t, string(user), "name: package")
+	assert.NotContains(t, string(user), "name: system")
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"package", "system", "replacement"}, instanceNames(cfg.ICL.Instances))
+
+	require.NoError(t, UnsetConfig("icl.instances"))
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"package", "system"}, instanceNames(cfg.ICL.Instances))
+	packageAfter, err := os.ReadFile(packagePath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	systemAfter, err := os.ReadFile(systemPath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	assert.Equal(t, packageBefore, packageAfter)
+	assert.Equal(t, systemBefore, systemAfter)
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestSetAndUnsetConfig_InstanceMergeRejectsInvalidUnsetAndCanRepair(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	usePackageConfig(t, `icl:
+  instancesMerge: append
+  instances:
+    - name: duplicate
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`)
+	writeSystemConfig(t, `icl:
+  instances:
+    - name: duplicate
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`)
+	userPath := writeUserConfig(t, "# retain this comment\nicl:\n  instancesMerge: append\n")
+
+	cfg, err := LoadConfig()
+	require.ErrorContains(t, err, `duplicate effective instance name "duplicate"`)
+	assert.Nil(t, cfg)
+	require.NoError(t, SetConfig("icl.instancesMerge", "replace"))
+	cfg, err = LoadConfig()
+	require.NoError(t, err)
+	assert.Equal(t, []string{"duplicate"}, instanceNames(cfg.ICL.Instances))
+
+	before, err := os.ReadFile(userPath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	err = UnsetConfig("icl.instancesMerge")
+	require.ErrorContains(t, err, `duplicate effective instance name "duplicate"`)
+	after, err := os.ReadFile(userPath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
 }
 
 func TestSetAndUnsetConfig_UsePackageAndSystemBase(t *testing.T) {

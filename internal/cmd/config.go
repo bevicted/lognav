@@ -151,7 +151,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	topic := &cobra.Command{
 		Use:   "config [command]",
 		Short: "Manage configuration",
-		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides. Writes modify only `user.yaml`. `status`, `set`, `unset`, and `edit` remain available when user.yaml is missing or invalid.",
+		Long:  "Configuration reads merge public defaults, optional read-only Homebrew defaults, optional system YAML, and sparse `user.yaml` overrides. `icl.instancesMerge` resolves once across all layers: `replace` selects the highest supplied list, while `append` combines them in layer order. Writes modify only `user.yaml`. `status`, `set`, `unset`, and `edit` remain available when user.yaml is missing or invalid.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -194,7 +194,7 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	get := &cobra.Command{
 		Use:               "get <dotted-key>",
 		Short:             "Get one effective configuration value",
-		Long:              "Missing keys are errors. `icl.instances` is the writable list of configured targets.",
+		Long:              "Missing keys are errors. `icl.instances` reports the resolved configured targets; writes change only the user's list contribution.",
 		Example:           "  lognav config get core.enableMouse\n  lognav config get icl.instances -o json",
 		Args:              exactDottedConfigKey,
 		ValidArgsFunction: completeReadableConfigKeys,
@@ -266,8 +266,8 @@ func initTopicConfig(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobr
 	set := &cobra.Command{
 		Use:               "set <yamlpath> <value>",
 		Short:             "Set a configuration value",
-		Long:              "A leading $ on the key is optional. Numbers and booleans are typed automatically, and lists use YAML literals such as '[enter, ctrl+y]'. The value is validated before writing; rejected values do not change the file. An invalid value can be replaced in an otherwise invalid file, but the resulting complete document must validate. Only the changed key is written, preserving comments and other fields.",
-		Example:           "  lognav config set core.enableMouse false\n  lognav config set style.errorColor '#ff5555'\n  lognav config set keys.accept '[enter, ctrl+y]'",
+		Long:              "A leading $ on the key is optional. Numbers and booleans are typed automatically, and lists use YAML literals such as '[enter, ctrl+y]'. `icl.instances` writes only the user's contribution; effective reads may include lower-layer targets when `icl.instancesMerge` is `append`. The value is validated before writing; rejected values do not change the file. An invalid value can be replaced in an otherwise invalid file, but the resulting complete document must validate. Only the changed key is written, preserving comments and other fields.",
+		Example:           "  lognav config set core.enableMouse false\n  lognav config set style.errorColor '#ff5555'\n  lognav config set keys.accept '[enter, ctrl+y]'\n  lognav config set icl.instancesMerge append",
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWritableConfigKeys,
 		RunE: func(cmd *cobra.Command, args []string) error {

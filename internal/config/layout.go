@@ -10,6 +10,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+const (
+	instanceMergeReplace = "replace"
+	instanceMergeAppend  = "append"
+)
+
 // newConfig inits a Config object with default values.
 //
 //nolint:funlen // single literal initializing all default config fields; splitting harms readability.
@@ -142,7 +147,8 @@ func newConfig() *Config {
 			DpErrorFg:    ConfigColor{ansi.Red},
 		},
 		ICL: ICL{
-			Instances: []ICLInstanceConfig{},
+			InstancesMerge: instanceMergeReplace,
+			Instances:      []ICLInstanceConfig{},
 			Environments: map[string]ICLEnvironmentConfig{
 				"bluemix": {IAMURL: "https://iam.cloud.ibm.com/identity"},
 			},
@@ -433,9 +439,10 @@ type EffectiveInstance struct {
 }
 
 type ICL struct {
-	Instances    []ICLInstanceConfig             `yaml:"instances"    desc:"configured ICL instances"`
-	Environments map[string]ICLEnvironmentConfig `yaml:"environments" desc:"IAM environments keyed by CRN CName"`
-	DefaultQuery string                          `yaml:"defaultQuery" desc:"Dataprime query template resolved on startup"`
+	InstancesMerge string                          `yaml:"instancesMerge" desc:"instance-list merge policy: replace or append"`
+	Instances      []ICLInstanceConfig             `yaml:"instances"      desc:"configured ICL instances"`
+	Environments   map[string]ICLEnvironmentConfig `yaml:"environments" desc:"IAM environments keyed by CRN CName"`
+	DefaultQuery   string                          `yaml:"defaultQuery" desc:"Dataprime query template resolved on startup"`
 }
 
 // ICLEnvironmentConfig supplies one IAM discovery endpoint and its optional

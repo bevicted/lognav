@@ -178,8 +178,23 @@ func configFromDocuments(documents ...map[string]any) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	instanceLists, err := instanceListContributions(append([]map[string]any{merged}, documents...))
+	if err != nil {
+		return nil, err
+	}
 	for _, document := range documents {
 		mergeConfigMappings(merged, document)
+	}
+	icl, ok := merged["icl"].(map[string]any)
+	if !ok {
+		return nil, errors.New("icl must be a map")
+	}
+	if icl["instancesMerge"] == instanceMergeAppend {
+		instances := make([]any, 0)
+		for _, list := range instanceLists {
+			instances = append(instances, list...)
+		}
+		icl["instances"] = instances
 	}
 	b, err := yaml.Marshal(merged)
 	if err != nil {
@@ -205,6 +220,30 @@ func configDocument(b []byte) (map[string]any, error) {
 		return nil, errors.New("configuration document must be a map")
 	}
 	return document, nil
+}
+
+func instanceListContributions(documents []map[string]any) ([][]any, error) {
+	lists := make([][]any, 0, len(documents))
+	for _, document := range documents {
+		icl, present := document["icl"]
+		if !present {
+			continue
+		}
+		iclMapping, ok := icl.(map[string]any)
+		if !ok {
+			return nil, errors.New("icl must be a map")
+		}
+		instances, present := iclMapping["instances"]
+		if !present {
+			continue
+		}
+		list, ok := instances.([]any)
+		if !ok {
+			return nil, errors.New("icl.instances must be a list; use [] for no instances")
+		}
+		lists = append(lists, list)
+	}
+	return lists, nil
 }
 
 func mergeConfigMappings(base, overlay map[string]any) {
@@ -610,6 +649,11 @@ func validateICLShape(value any) error {
 	if !ok {
 		return errors.New("icl must be a map")
 	}
+	if mode, present := icl["instancesMerge"]; present {
+		if err := validateInstancesMerge(mode); err != nil {
+			return err
+		}
+	}
 	instances, present := icl["instances"]
 	if present {
 		entries, ok := instances.([]any)
@@ -629,6 +673,14 @@ func validateICLShape(value any) error {
 		if _, ok := record.(map[string]any); !ok {
 			return fmt.Errorf("icl.environments.%q must be a record", cname)
 		}
+	}
+	return nil
+}
+
+func validateInstancesMerge(value any) error {
+	mode, ok := value.(string)
+	if !ok || (mode != instanceMergeReplace && mode != instanceMergeAppend) {
+		return errors.New(`icl.instancesMerge must be "replace" or "append"`)
 	}
 	return nil
 }

@@ -53,6 +53,7 @@ func TestConfigShowAndGet_EffectiveRedactedView(t *testing.T) {
 	text, err := configReadCommand(t, cfg, "show")
 	require.NoError(t, err)
 	assert.Contains(t, text, "instances:")
+	assert.Contains(t, text, "instancesMerge: replace")
 	assert.Contains(t, text, "name: one")
 	assert.Contains(t, text, "name: two")
 	assert.Contains(t, text, "apiKey: redacted")
@@ -71,6 +72,7 @@ func TestConfigShowAndGet_EffectiveRedactedView(t *testing.T) {
 	bluemix, ok := environments["bluemix"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "redacted", bluemix["apiKey"])
+	assert.Equal(t, "replace", icl["instancesMerge"])
 	instances, ok := icl["instances"].([]any)
 	require.True(t, ok)
 	require.Len(t, instances, 2)
@@ -148,10 +150,10 @@ func TestConfigKeyCompletion(t *testing.T) {
 		want     []string
 		dontWant string
 	}{
-		{name: "get", command: "get", prefix: "icl.in", want: []string{"icl.instances\t"}},
+		{name: "get", command: "get", prefix: "icl.in", want: []string{"icl.instances\t", "icl.instancesMerge\t"}},
 		{name: "describe", command: "describe", prefix: "core", want: []string{"core\t", "core.enableMouse\t"}},
-		{name: "set", command: "set", prefix: "icl.in", want: []string{"icl.instances\t"}},
-		{name: "unset", command: "unset", prefix: "icl.in", want: []string{"icl.instances\t"}},
+		{name: "set", command: "set", prefix: "icl.in", want: []string{"icl.instances\t", "icl.instancesMerge\t"}},
+		{name: "unset", command: "unset", prefix: "icl.in", want: []string{"icl.instances\t", "icl.instancesMerge\t"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -360,6 +362,82 @@ func TestConfigStatus(t *testing.T) {
 	require.NoError(t, root.Execute())
 	assert.Contains(t, completion.String(), "status\tDiagnose configuration file layers")
 	assert.NotContains(t, completion.String(), "path\tPrint the configuration file path")
+}
+
+//nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
+func TestConfigCLI_InstanceMergeReadsResolvedListsAndWritesUserContribution(t *testing.T) {
+	xdgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdgHome)
+	packagePath := filepath.Join(t.TempDir(), "defaults.yaml")
+	require.NoError(t, os.WriteFile(packagePath, []byte(`icl:
+  instancesMerge: append
+  instances:
+    - name: package
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:package::'
+`), 0o400))
+	oldPackagePath := config.PackageConfigPath
+	config.PackageConfigPath = packagePath
+	t.Cleanup(func() { config.PackageConfigPath = oldPackagePath })
+
+	configDir := filepath.Join(xdgHome, "lognav")
+	require.NoError(t, os.MkdirAll(configDir, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "system.yaml"), []byte(`icl:
+  instances:
+    - name: system
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:system::'
+`), 0o600))
+	userPath := filepath.Join(configDir, "user.yaml")
+	require.NoError(t, os.WriteFile(userPath, []byte(`icl:
+  instances:
+    - name: user
+      crn: 'crn:v1:bluemix:public:logs:us-south:a/account:user::'
+`), 0o600))
+
+	run := func(args ...string) (string, error) {
+		t.Helper()
+		root := newRootCmd(defaultSetup)
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs(append([]string{configCmd}, args...))
+		err := root.Execute()
+		return out.String(), err
+	}
+
+	out, err := run("get", "icl.instancesMerge")
+	require.NoError(t, err)
+	assert.Equal(t, "append\n", out)
+	out, err = run("show")
+	require.NoError(t, err)
+	assert.Contains(t, out, "instancesMerge: append")
+	assert.Contains(t, out, "name: package")
+	assert.Contains(t, out, "name: system")
+	assert.Contains(t, out, "name: user")
+	out, err = run("describe", "icl.instancesMerge")
+	require.NoError(t, err)
+	assert.Contains(t, out, `icl.instancesMerge (string) = "append"`)
+	assert.Contains(t, out, `default: "replace"`)
+
+	_, err = run("set", "icl.instances", "[{name: replacement, crn: 'crn:v1:bluemix:public:logs:us-south:a/account:replacement::'}]")
+	require.NoError(t, err)
+	user, err := os.ReadFile(userPath) // #nosec G304 -- test fixture path
+	require.NoError(t, err)
+	assert.Contains(t, string(user), "name: replacement")
+	assert.NotContains(t, string(user), "name: package")
+	assert.NotContains(t, string(user), "name: system")
+	out, err = run("get", "icl.instances")
+	require.NoError(t, err)
+	assert.Contains(t, out, "name: package")
+	assert.Contains(t, out, "name: system")
+	assert.Contains(t, out, "name: replacement")
+
+	_, err = run("unset", "icl.instances")
+	require.NoError(t, err)
+	out, err = run("get", "icl.instances")
+	require.NoError(t, err)
+	assert.Contains(t, out, "name: package")
+	assert.Contains(t, out, "name: system")
+	assert.NotContains(t, out, "name: replacement")
 }
 
 func TestNormalizeYAMLPath(t *testing.T) {

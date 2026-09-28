@@ -24,6 +24,7 @@ func TestConfigurableLeafPath(t *testing.T) {
 		{"scalar_leaf", "$.core.enableMouse", true, "bool"},
 		{"leading_dot_form", ".core.redrawIntervalMs", true, "uint16"},
 		{"keybind_leaf", "$.keys.accept", true, "[]string"},
+		{"instances_merge_leaf", "$.icl.instancesMerge", true, "string"},
 		{"extra_instances_leaf", "$.icl.instances", true, "[]ICLInstanceConfig"},
 		{"environments_map_leaf", "$.icl.environments", true, "map[string]ICLEnvironmentConfig"},
 		{"version_leaf", "$.version", true, "int"},
@@ -112,6 +113,11 @@ func TestSetValue(t *testing.T) {
 			name: "whole_extra_color_rules_list",
 			src:  base, path: "logs.extraColorRules", value: "[{match: ERROR, fg: red}]",
 			wantSubstr: []string{"extraColorRules:", "match: ERROR", "fg: red"},
+		},
+		{
+			name: "instance_merge_mode",
+			src:  base, path: "icl.instancesMerge", value: "append",
+			wantSubstr: []string{"instancesMerge: append"},
 		},
 		{
 			name: "whole_extra_instances_list",

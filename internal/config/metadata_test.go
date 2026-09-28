@@ -87,6 +87,17 @@ func TestFirstFetchKeyMetadata(t *testing.T) {
 	assert.Equal(t, KeyBind{"shift+f"}, node.Default)
 }
 
+func TestWritableInstancesMergeMetadata(t *testing.T) {
+	t.Parallel()
+	metas := GetFieldMetadata(New(), "$.icl.instancesMerge")
+	require.Len(t, metas, 1)
+	assert.False(t, metas[0].Computed)
+	assert.False(t, metas[0].ReadOnly)
+	assert.Equal(t, "string", metas[0].GoType)
+	assert.Equal(t, "replace", metas[0].Default)
+	assert.Contains(t, metas[0].Description, "replace or append")
+}
+
 func TestWritableInstancesMetadata(t *testing.T) {
 	t.Parallel()
 	metas := GetFieldMetadata(New(), "$.icl.instances")

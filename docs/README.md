@@ -27,19 +27,25 @@ shell session after installation.
 
 ## Quick start
 
-Configure at least one IBM Cloud Logs instance before querying. `icl.instances`
-is a writable list; use `[]` when you intentionally want no instances. Run
-`lognav config status` to find and diagnose the editable `user.yaml` path, then
-save this configuration there:
+Configure at least one IBM Cloud Logs instance before querying. Public builds
+default `icl.instancesMerge` to `replace`: the highest-priority supplied list is
+effective. Set it to `append` to add personal entries to managed Homebrew or
+system entries in layer order. `lognav config set icl.instances` writes only the
+user list contribution; `config get` and `config show` report the resolved list.
+Run `lognav config status` to find and diagnose the editable `user.yaml` path,
+then save this configuration there:
 
 ```yaml
 icl:
+  instancesMerge: append
   instances:
-    - name: production
-      crn: "crn:v1:bluemix:public:logs:us-south:a/<account-id>:<instance-id>::"
+    - name: personal
+      crn: "crn:v1:bluemix:public:logs:us-south:a/example:personal::"
 ```
 
-Replace the placeholder CRN values with your IBM Cloud Logs instance values.
+To replace all lower entries, use `instancesMerge: replace` with your complete
+list. Clear every entry only with `instancesMerge: replace` and `instances: []`;
+an empty list contributes nothing when the final mode is `append`.
 
 Existing `config.yaml` files are not loaded or changed. If `user.yaml` does not
 exist, rename `config.yaml` manually. If both files exist, reconcile them

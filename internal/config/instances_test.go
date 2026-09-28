@@ -42,7 +42,9 @@ func TestEffectiveInstances_DoesNotAliasConfig(t *testing.T) {
 func TestNewConfig_InstancesAreEmptyAndNonNil(t *testing.T) {
 	t.Parallel()
 
-	instances := EffectiveInstances(New())
+	cfg := New()
+	assert.Equal(t, instanceMergeReplace, cfg.ICL.InstancesMerge)
+	instances := EffectiveInstances(cfg)
 	assert.NotNil(t, instances)
 	assert.Empty(t, instances)
 }
