@@ -34,12 +34,12 @@ fmt:
     go fmt ./...
     golangci-lint fmt ./...
     go mod tidy
-    bunx prettier --write "**/*.md"
+    bunx prettier --write "docs/**/*.md"
 
 fmt-check:
     golangci-lint fmt --diff ./...
     go mod tidy -diff
-    bunx prettier --check "**/*.md"
+    bunx prettier --check "docs/**/*.md"
 
 lint:
     golangci-lint run ./...
