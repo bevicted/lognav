@@ -121,7 +121,7 @@ func TestLogin_DefaultAndRepeatedEnvironments(t *testing.T) { //nolint:parallelt
 		assert.Equal(t, 1, grants)
 		assert.Zero(t, browserCalls)
 		assert.Equal(t, map[icl.Environment]string{icl.EnvProd: "prod-refresh", icl.Environment("test-cloud"): "existing-stage-refresh"}, saved)
-		assert.Contains(t, stdout, "Logged in to bluemix.")
+		assert.Contains(t, stdout, "Logged in to bluemix via passcode.")
 		assert.NotContains(t, stdout, "prod-passcode")
 	})
 
@@ -169,7 +169,7 @@ func TestLogin_DefaultAndRepeatedEnvironments(t *testing.T) { //nolint:parallelt
 		require.Len(t, saves, 2)
 		assert.Equal(t, map[icl.Environment]string{icl.Environment("test-cloud"): "refresh-stage-code"}, saves[0])
 		assert.Equal(t, map[icl.Environment]string{icl.Environment("test-cloud"): "refresh-stage-code", icl.EnvProd: "refresh-prod-code"}, saves[1])
-		assert.Less(t, bytes.Index([]byte(stdout), []byte("Logged in to test-cloud.")), bytes.Index([]byte(stdout), []byte("Logged in to bluemix.")))
+		assert.Less(t, bytes.Index([]byte(stdout), []byte("Logged in to test-cloud via passcode.")), bytes.Index([]byte(stdout), []byte("Logged in to bluemix via passcode.")))
 		assert.NotContains(t, stdout, "stage-passcode")
 		assert.NotContains(t, stdout, "prod-passcode")
 	})
@@ -181,9 +181,10 @@ func TestLogin_UsesConfiguredAPIKeyWithoutTTY(t *testing.T) { //nolint:parallelt
 		configuredKey  string
 		environmentKey string
 		wantKey        string
+		wantMethod     icl.AuthenticationMethod
 	}{
-		{name: "configured API key", configuredKey: "configured-key", wantKey: "configured-key"},
-		{name: "environment API key overrides configured key", configuredKey: "configured-key", environmentKey: "environment-key", wantKey: "environment-key"},
+		{name: "configured API key", configuredKey: "configured-key", wantKey: "configured-key", wantMethod: icl.AuthenticationMethodConfiguredAPIKey},
+		{name: "environment API key overrides configured key", configuredKey: "configured-key", environmentKey: "environment-key", wantKey: "environment-key", wantMethod: icl.AuthenticationMethodEnvironmentAPIKey},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			setLoginSeams(t)
@@ -236,12 +237,53 @@ func TestLogin_UsesConfiguredAPIKeyWithoutTTY(t *testing.T) { //nolint:parallelt
 			stdout, stderr, err := runLoginCommandWithConfig(t, cfg)
 			require.NoError(t, err)
 			assert.Empty(t, stderr)
-			assert.Contains(t, stdout, "Logged in to bluemix.")
+			assert.Contains(t, stdout, "Logged in to bluemix via "+string(tt.wantMethod)+".")
 			assert.Equal(t, tt.wantKey, gotKey)
 			assert.Equal(t, "urn:ibm:params:oauth:grant-type:apikey", gotGrant)
 			assert.Equal(t, map[icl.Environment]string{icl.EnvProd: "refresh"}, saved)
 		})
 	}
+}
+
+func TestLogin_ReportsRefreshTokenMethod(t *testing.T) { //nolint:paralleltest // replaces command seams
+	setLoginSeams(t)
+	var grant, refreshToken string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !assert.NoError(t, r.ParseForm()) {
+			return
+		}
+		grant = r.Form.Get("grant_type")
+		refreshToken = r.Form.Get("refresh_token")
+		_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"rotated-refresh","expires_in":3600}`)
+	}))
+	t.Cleanup(srv.Close)
+	newLoginAccountManager = func(environments map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
+		manager := icl.NewAccountManager(environments)
+		manager.SetOIDCForTest(icl.EnvProd, srv.URL, srv.URL)
+		return manager
+	}
+	loginSessionPath = func() (string, error) { return "session", nil }
+	loadLoginSession = func(string) (map[icl.Environment]string, error) {
+		return map[icl.Environment]string{icl.EnvProd: "saved-refresh"}, nil
+	}
+	var saved map[icl.Environment]string
+	saveLoginSession = func(_ string, tokens map[icl.Environment]string) error {
+		saved = maps.Clone(tokens)
+		return nil
+	}
+	isTTY = func() bool { return false }
+	readLoginPasscode = func(context.Context) ([]byte, error) {
+		t.Fatal("a valid refresh token must not prompt for a passcode")
+		return nil, nil
+	}
+
+	stdout, stderr, err := runLoginCommand(t)
+	require.NoError(t, err)
+	assert.Empty(t, stderr)
+	assert.Equal(t, "Logged in to bluemix via refresh token.\n", stdout)
+	assert.Equal(t, "refresh_token", grant)
+	assert.Equal(t, "saved-refresh", refreshToken)
+	assert.Equal(t, map[icl.Environment]string{icl.EnvProd: "rotated-refresh"}, saved)
 }
 
 func TestLogin_BrowserConfigAndNoOpen(t *testing.T) { //nolint:paralleltest // replaces command seams
@@ -474,7 +516,7 @@ func TestLogin_UnframesBracketedPastePasscode(t *testing.T) { //nolint:parallelt
 	stdout, stderr, err := runLoginCommand(t, "--no-open")
 	require.NoError(t, err)
 	assert.Empty(t, stderr)
-	assert.Contains(t, stdout, "Logged in to bluemix.")
+	assert.Contains(t, stdout, "Logged in to bluemix via passcode.")
 	assert.NotContains(t, stdout, passcode)
 }
 

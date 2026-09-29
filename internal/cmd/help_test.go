@@ -306,6 +306,7 @@ func TestAuthenticationAndDocsHelpContracts(t *testing.T) {
 	for _, want := range []string{
 		"same credential chain as the TUI",
 		"API key selected by the environment's configured environment variable, configured API key, configured 1Password reference",
+		"A successful login reports which credential source was used.",
 		"An IBM Cloud CLI session is not used.",
 		"Terminal stdin is required only when the chain reaches the passcode flow",
 		"passcodes are read with echo disabled and cannot be passed as an argument or redirected.",

@@ -59,7 +59,8 @@ used. If no noninteractive credential is available, login uses terminal stdin,
 prints the passcode URL, and reads the pasted passcode without echo. It opens
 the URL when `core.openBrowser` is enabled, which is the default; `--no-open`
 overrides that setting. A terminal is required only for this passcode fallback.
-See `lognav login --help` for environment selection.
+On success, login reports the credential source it used. See
+`lognav login --help` for environment selection.
 
 A successful exchange that returns a refresh token stores it in plaintext
 `$XDG_STATE_HOME/lognav/session.json` (normally

@@ -248,6 +248,26 @@ func TestGetAuthToken_OnePasswordFailuresDoNotUseUnusedEnvironmentSource(t *test
 	})
 }
 
+func TestAuthenticateEnvironment_ReportsOnePasswordMethod(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
+	const onePasswordKey = "synthetic-login-onepassword-key"
+	original := readOnePasswordRef
+	t.Cleanup(func() { readOnePasswordRef = original })
+	readOnePasswordRef = func(context.Context, string) (string, error) {
+		return onePasswordKey, nil
+	}
+	srv := newIAMStubServer(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, onePasswordKey, r.Form.Get("apikey"))
+		_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"refresh","expires_in":3600}`)
+	})
+	am := testAccountManager("", "op://vault/item/field", "", "")
+	am.SetOIDCForTest(EnvProd, srv.URL)
+
+	method, err := am.AuthenticateEnvironment(t.Context(), EnvProd)
+	require.NoError(t, err)
+	assert.Equal(t, AuthenticationMethodOnePassword, method)
+}
+
 func TestGetAuthToken_CachedOnePasswordAPIKeyDoesNotUseUnusedEnvironmentSource(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
 	const (
 		unusedSource   = "LOGNAV_UNUSED_CACHED_ONEPASSWORD_API_KEY"

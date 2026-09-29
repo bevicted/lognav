@@ -116,6 +116,20 @@ type envAuth struct {
 	opRef        string
 }
 
+// AuthenticationMethod identifies the credential source that authenticated an
+// environment.
+type AuthenticationMethod string
+
+//nolint:gosec // These labels describe credential types; they are not credentials.
+const (
+	AuthenticationMethodCachedAccessToken AuthenticationMethod = "cached access token"
+	AuthenticationMethodRefreshToken      AuthenticationMethod = "refresh token"
+	AuthenticationMethodEnvironmentAPIKey AuthenticationMethod = "environment API key"
+	AuthenticationMethodConfiguredAPIKey  AuthenticationMethod = "configured API key"
+	AuthenticationMethodOnePassword       AuthenticationMethod = "1Password"
+	AuthenticationMethodPasscode          AuthenticationMethod = "passcode"
+)
+
 // AccountManager resolves bearer tokens for ICL CRNs. Each configured
 // environment has independent credentials, sessions, and account token cache.
 type AccountManager struct {
@@ -513,18 +527,19 @@ func (am *AccountManager) GetAuthTokenNoPasscode(ctx context.Context, crn *confi
 }
 
 // AuthenticateEnvironment runs the interactive credential chain without an
-// instance CRN. It is used when callers need to establish an environment
-// session rather than access one specific account.
-func (am *AccountManager) AuthenticateEnvironment(ctx context.Context, env Environment) error {
-	_, err := am.getAuthTokenForAccount(ctx, env, "", true)
-	return err
+// instance CRN and reports the credential source used. It is used when callers
+// need to establish an environment session rather than access one account.
+func (am *AccountManager) AuthenticateEnvironment(ctx context.Context, env Environment) (AuthenticationMethod, error) {
+	_, method, err := am.getAuthTokenForAccount(ctx, env, "", true)
+	return method, err
 }
 
 func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, allowPasscode bool) (string, error) {
 	if crn == nil {
 		return "", errors.New("missing instance CRN")
 	}
-	return am.getAuthTokenForAccount(ctx, Environment(crn.CName), crn.ScopeID, allowPasscode)
+	token, _, err := am.getAuthTokenForAccount(ctx, Environment(crn.CName), crn.ScopeID, allowPasscode)
+	return token, err
 }
 
 // getAuthTokenForAccount implements the shared credential chain. allowPasscode
@@ -532,25 +547,25 @@ func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, all
 // HeadlessAuthRequiredError.
 //
 //nolint:gocyclo // sequential auth chain; each branch handles a distinct credential path.
-func (am *AccountManager) getAuthTokenForAccount(ctx context.Context, env Environment, accountID string, allowPasscode bool) (string, error) {
+func (am *AccountManager) getAuthTokenForAccount(ctx context.Context, env Environment, accountID string, allowPasscode bool) (string, AuthenticationMethod, error) {
 	ea, ok := am.envs[env]
 	if !ok {
-		return "", fmt.Errorf("unsupported ICL environment %q", env)
+		return "", "", fmt.Errorf("unsupported ICL environment %q", env)
 	}
 	ea.mu.Lock()
 	defer ea.mu.Unlock()
 
 	if entry, ok := ea.accessTokens[accountID]; ok && entry.expiresAt.Sub(am.now()) > refreshBuffer {
-		return string(entry.token), nil
+		return string(entry.token), AuthenticationMethodCachedAccessToken, nil
 	}
 
 	if ea.refreshToken != "" {
 		token, rejected, err := am.exchangeRefreshToken(ctx, ea, accountID)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		if !rejected {
-			return token, nil
+			return token, AuthenticationMethodRefreshToken, nil
 		}
 		ea.refreshToken = ""
 	}
@@ -559,35 +574,39 @@ func (am *AccountManager) getAuthTokenForAccount(ctx context.Context, env Enviro
 		token, err := am.exchangeAPIKey(ctx, ea, accountID, string(ea.apiKey))
 		if err != nil {
 			if ea.apiKeyEnvVar != "" {
-				return "", fmt.Errorf("API key from environment variable %q token exchange failed: %w", ea.apiKeyEnvVar, err)
+				return "", "", fmt.Errorf("API key from environment variable %q token exchange failed: %w", ea.apiKeyEnvVar, err)
 			}
-			return "", fmt.Errorf("API key token exchange failed: %w", err)
+			return "", "", fmt.Errorf("API key token exchange failed: %w", err)
 		}
-		return token, nil
+		method := AuthenticationMethodConfiguredAPIKey
+		if ea.apiKeyEnvVar != "" {
+			method = AuthenticationMethodEnvironmentAPIKey
+		}
+		return token, method, nil
 	}
 
 	if ea.opRef != "" {
 		apiKey, opErr := readOnePasswordRef(ctx, ea.opRef)
 		if opErr != nil {
-			return "", fmt.Errorf("1Password lookup failed: %w", opErr)
+			return "", "", fmt.Errorf("1Password lookup failed: %w", opErr)
 		}
 		token, err := am.exchangeAPIKey(ctx, ea, accountID, apiKey)
 		if err != nil {
-			return "", fmt.Errorf("1Password API key token exchange failed: %w", err)
+			return "", "", fmt.Errorf("1Password API key token exchange failed: %w", err)
 		}
 		ea.apiKey = secret.String(apiKey)
 		ea.apiKeyEnvVar = ""
-		return token, nil
+		return token, AuthenticationMethodOnePassword, nil
 	}
 
 	if !allowPasscode {
-		return "", &HeadlessAuthRequiredError{Env: env}
+		return "", "", &HeadlessAuthRequiredError{Env: env}
 	}
 	oidcCfg, err := am.getOIDCConfig(ctx, ea)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return "", NewPasscodeRequired(oidcCfg.PasscodeEndpoint, env)
+	return "", "", NewPasscodeRequired(oidcCfg.PasscodeEndpoint, env)
 }
 
 // SetAPIKey updates the API key and its environment-variable source for an
