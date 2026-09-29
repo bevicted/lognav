@@ -120,6 +120,9 @@ type envAuth struct {
 // environment.
 type AuthenticationMethod string
 
+// CredentialMode selects a credential source for standalone authentication.
+type CredentialMode string
+
 //nolint:gosec // These labels describe credential types; they are not credentials.
 const (
 	AuthenticationMethodCachedAccessToken AuthenticationMethod = "cached access token"
@@ -128,7 +131,66 @@ const (
 	AuthenticationMethodConfiguredAPIKey  AuthenticationMethod = "configured API key"
 	AuthenticationMethodOnePassword       AuthenticationMethod = "1Password"
 	AuthenticationMethodPasscode          AuthenticationMethod = "passcode"
+
+	CredentialModeAuto        CredentialMode = "auto"
+	CredentialModeRefresh     CredentialMode = "refresh"
+	CredentialModeEnv         CredentialMode = "env"
+	CredentialModeAPIKey      CredentialMode = "api-key"
+	CredentialModeOnePassword CredentialMode = "1password"
+	CredentialModePasscode    CredentialMode = "passcode"
 )
+
+// ParseCredentialMode validates a standalone authentication credential mode.
+func ParseCredentialMode(value string) (CredentialMode, error) {
+	mode := CredentialMode(value)
+	switch mode {
+	case CredentialModeAuto, CredentialModeRefresh, CredentialModeEnv, CredentialModeAPIKey, CredentialModeOnePassword, CredentialModePasscode:
+		return mode, nil
+	default:
+		return "", errors.New("invalid credential mode (must be auto, refresh, env, api-key, 1password, or passcode)")
+	}
+}
+
+// CredentialModes returns the supported standalone authentication credential modes.
+func CredentialModes() []string {
+	return []string{
+		string(CredentialModeAuto),
+		string(CredentialModeRefresh),
+		string(CredentialModeEnv),
+		string(CredentialModeAPIKey),
+		string(CredentialModeOnePassword),
+		string(CredentialModePasscode),
+	}
+}
+
+// CredentialModeError reports a secret-safe forced credential failure.
+type CredentialModeError struct {
+	mode   CredentialMode
+	reason string
+}
+
+func (e *CredentialModeError) Error() string {
+	return fmt.Sprintf("selected %s credential %s", e.mode, e.reason)
+}
+
+func credentialModeUnavailable(mode CredentialMode) error {
+	return &CredentialModeError{mode: mode, reason: "is not configured"}
+}
+
+func credentialModeRejected(mode CredentialMode) error {
+	return &CredentialModeError{mode: mode, reason: "was rejected"}
+}
+
+func credentialModeAuthenticationError(mode CredentialMode, err error) error {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	var iamErr *IAMError
+	if errors.As(err, &iamErr) {
+		return credentialModeRejected(mode)
+	}
+	return &CredentialModeError{mode: mode, reason: "authentication failed"}
+}
 
 // AccountManager resolves bearer tokens for ICL CRNs. Each configured
 // environment has independent credentials, sessions, and account token cache.
@@ -530,7 +592,13 @@ func (am *AccountManager) GetAuthTokenNoPasscode(ctx context.Context, crn *confi
 // instance CRN and reports the credential source used. It is used when callers
 // need to establish an environment session rather than access one account.
 func (am *AccountManager) AuthenticateEnvironment(ctx context.Context, env Environment) (AuthenticationMethod, error) {
-	_, method, err := am.getAuthTokenForAccount(ctx, env, "", true)
+	return am.AuthenticateEnvironmentWithCredentialMode(ctx, env, CredentialModeAuto)
+}
+
+// AuthenticateEnvironmentWithCredentialMode authenticates an environment with
+// mode's source only, except auto, which follows the normal credential chain.
+func (am *AccountManager) AuthenticateEnvironmentWithCredentialMode(ctx context.Context, env Environment, mode CredentialMode) (AuthenticationMethod, error) {
+	_, method, err := am.getAuthTokenForAccountWithCredentialMode(ctx, env, "", true, mode)
 	return method, err
 }
 
@@ -538,16 +606,16 @@ func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, all
 	if crn == nil {
 		return "", errors.New("missing instance CRN")
 	}
-	token, _, err := am.getAuthTokenForAccount(ctx, Environment(crn.CName), crn.ScopeID, allowPasscode)
+	token, _, err := am.getAuthTokenForAccountWithCredentialMode(ctx, Environment(crn.CName), crn.ScopeID, allowPasscode, CredentialModeAuto)
 	return token, err
 }
 
-// getAuthTokenForAccount implements the shared credential chain. allowPasscode
-// retains the TUI's passcode behavior while headless callers receive
-// HeadlessAuthRequiredError.
+// getAuthTokenForAccountWithCredentialMode implements the shared credential
+// chain. allowPasscode retains the TUI's passcode behavior while headless
+// callers receive HeadlessAuthRequiredError.
 //
-//nolint:gocyclo // sequential auth chain; each branch handles a distinct credential path.
-func (am *AccountManager) getAuthTokenForAccount(ctx context.Context, env Environment, accountID string, allowPasscode bool) (string, AuthenticationMethod, error) {
+//nolint:gocyclo,nestif // Sequential auth chain; each branch handles a distinct credential path.
+func (am *AccountManager) getAuthTokenForAccountWithCredentialMode(ctx context.Context, env Environment, accountID string, allowPasscode bool, mode CredentialMode) (string, AuthenticationMethod, error) {
 	ea, ok := am.envs[env]
 	if !ok {
 		return "", "", fmt.Errorf("unsupported ICL environment %q", env)
@@ -555,55 +623,97 @@ func (am *AccountManager) getAuthTokenForAccount(ctx context.Context, env Enviro
 	ea.mu.Lock()
 	defer ea.mu.Unlock()
 
-	if entry, ok := ea.accessTokens[accountID]; ok && entry.expiresAt.Sub(am.now()) > refreshBuffer {
-		return string(entry.token), AuthenticationMethodCachedAccessToken, nil
+	if mode == CredentialModeAuto {
+		if entry, ok := ea.accessTokens[accountID]; ok && entry.expiresAt.Sub(am.now()) > refreshBuffer {
+			return string(entry.token), AuthenticationMethodCachedAccessToken, nil
+		}
 	}
 
-	if ea.refreshToken != "" {
-		token, rejected, err := am.exchangeRefreshToken(ctx, ea, accountID)
-		if err != nil {
-			return "", "", err
-		}
-		if !rejected {
-			return token, AuthenticationMethodRefreshToken, nil
-		}
-		ea.refreshToken = ""
-	}
-
-	if ea.apiKey != "" {
-		token, err := am.exchangeAPIKey(ctx, ea, accountID, string(ea.apiKey))
-		if err != nil {
-			if ea.apiKeyEnvVar != "" {
-				return "", "", fmt.Errorf("API key from environment variable %q token exchange failed: %w", ea.apiKeyEnvVar, err)
+	if mode == CredentialModeAuto || mode == CredentialModeRefresh {
+		if ea.refreshToken != "" {
+			token, rejected, err := am.exchangeRefreshToken(ctx, ea, accountID)
+			if err != nil {
+				if mode == CredentialModeRefresh {
+					return "", "", credentialModeAuthenticationError(mode, err)
+				}
+				return "", "", err
 			}
-			return "", "", fmt.Errorf("API key token exchange failed: %w", err)
+			if !rejected {
+				return token, AuthenticationMethodRefreshToken, nil
+			}
+			ea.refreshToken = ""
+			if mode == CredentialModeRefresh {
+				return "", "", credentialModeRejected(mode)
+			}
 		}
+		if mode == CredentialModeRefresh {
+			return "", "", credentialModeUnavailable(mode)
+		}
+	}
+
+	if mode == CredentialModeAuto || mode == CredentialModeEnv || mode == CredentialModeAPIKey {
 		method := AuthenticationMethodConfiguredAPIKey
 		if ea.apiKeyEnvVar != "" {
 			method = AuthenticationMethodEnvironmentAPIKey
 		}
-		return token, method, nil
+		matchesMode := mode == CredentialModeAuto ||
+			(mode == CredentialModeEnv && method == AuthenticationMethodEnvironmentAPIKey) ||
+			(mode == CredentialModeAPIKey && method == AuthenticationMethodConfiguredAPIKey)
+		if ea.apiKey != "" && matchesMode {
+			token, err := am.exchangeAPIKey(ctx, ea, accountID, string(ea.apiKey))
+			if err != nil {
+				if mode != CredentialModeAuto {
+					return "", "", credentialModeAuthenticationError(mode, err)
+				}
+				if ea.apiKeyEnvVar != "" {
+					return "", "", fmt.Errorf("API key from environment variable %q token exchange failed: %w", ea.apiKeyEnvVar, err)
+				}
+				return "", "", fmt.Errorf("API key token exchange failed: %w", err)
+			}
+			return token, method, nil
+		}
+		if mode != CredentialModeAuto {
+			return "", "", credentialModeUnavailable(mode)
+		}
 	}
 
-	if ea.opRef != "" {
-		apiKey, opErr := readOnePasswordRef(ctx, ea.opRef)
-		if opErr != nil {
-			return "", "", fmt.Errorf("1Password lookup failed: %w", opErr)
+	if mode == CredentialModeAuto || mode == CredentialModeOnePassword {
+		if ea.opRef == "" {
+			if mode == CredentialModeOnePassword {
+				return "", "", credentialModeUnavailable(mode)
+			}
+		} else {
+			apiKey, opErr := readOnePasswordRef(ctx, ea.opRef)
+			if opErr != nil {
+				if mode == CredentialModeOnePassword {
+					return "", "", credentialModeAuthenticationError(mode, opErr)
+				}
+				return "", "", fmt.Errorf("1Password lookup failed: %w", opErr)
+			}
+			token, err := am.exchangeAPIKey(ctx, ea, accountID, apiKey)
+			if err != nil {
+				if mode == CredentialModeOnePassword {
+					return "", "", credentialModeAuthenticationError(mode, err)
+				}
+				return "", "", fmt.Errorf("1Password API key token exchange failed: %w", err)
+			}
+			ea.apiKey = secret.String(apiKey)
+			ea.apiKeyEnvVar = ""
+			return token, AuthenticationMethodOnePassword, nil
 		}
-		token, err := am.exchangeAPIKey(ctx, ea, accountID, apiKey)
-		if err != nil {
-			return "", "", fmt.Errorf("1Password API key token exchange failed: %w", err)
-		}
-		ea.apiKey = secret.String(apiKey)
-		ea.apiKeyEnvVar = ""
-		return token, AuthenticationMethodOnePassword, nil
 	}
 
-	if !allowPasscode {
+	if mode != CredentialModeAuto && mode != CredentialModePasscode {
+		return "", "", credentialModeUnavailable(mode)
+	}
+	if mode == CredentialModeAuto && !allowPasscode {
 		return "", "", &HeadlessAuthRequiredError{Env: env}
 	}
 	oidcCfg, err := am.getOIDCConfig(ctx, ea)
 	if err != nil {
+		if mode == CredentialModePasscode {
+			return "", "", credentialModeAuthenticationError(mode, err)
+		}
 		return "", "", err
 	}
 	return "", "", NewPasscodeRequired(oidcCfg.PasscodeEndpoint, env)

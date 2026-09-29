@@ -31,12 +31,27 @@ func initLogin(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobra.Comm
 	var environments []string
 	var noOpen bool
 
+	credentialMode := icl.CredentialModeAuto
 	cmd := &cobra.Command{
-		Use:     "login",
+		Use:     "login [auto|refresh|env|api-key|1password|passcode]",
 		Short:   "Sign in with configured IBM Cloud IAM credentials",
-		Long:    "Authenticate with the same credential chain as the TUI and save any refresh token for future TUI and headless queries. The order is saved refresh token, an API key selected by the environment's configured environment variable, configured API key, configured 1Password reference, then the interactive browser/passcode flow. A successful login reports which credential source was used. An IBM Cloud CLI session is not used. Terminal stdin is required only when the chain reaches the passcode flow; passcodes are read with echo disabled and cannot be passed as an argument or redirected.\n\nWithout an environment selector, login uses `bluemix`. Duplicate configured environments are ignored in first-seen order. Each successful environment is saved immediately in the plaintext session file, while tokens for unselected environments remain; concurrent lognav processes can overwrite one another's updates. When a passcode is required, its URL is printed and, when `core.openBrowser` is enabled, opened by default; `--no-open` overrides the config and browser-launch failure is a warning.\n\nIf IAM rejects a saved refresh token, lognav clears it and continues to a configured credential. A configured credential failure returns immediately. `lognav query` uses the same noninteractive sources but never prompts.",
-		Example: "  lognav login\n  lognav login --environment my-cloud --no-open\n  lognav login --environment my-cloud --environment bluemix",
-		Args:    cobra.NoArgs,
+		Long:    "Authenticate with the same credential chain as the TUI and save any refresh token for future TUI and headless queries. With no mode or `auto`, the order is saved refresh token, an API key selected by the environment's configured environment variable, configured API key, configured 1Password reference, then the interactive browser/passcode flow. `refresh`, `env`, `api-key`, and `1password` use only that source; `passcode` goes directly to the interactive browser/passcode flow. A forced mode never falls back to another credential source. A successful login reports which credential source was used. An IBM Cloud CLI session is not used. Terminal stdin is required only when the chain reaches the passcode flow; passcodes are read with echo disabled and cannot be passed as an argument or redirected.\n\nWithout an environment selector, login uses `bluemix`. Duplicate configured environments are ignored in first-seen order. Each successful environment is saved immediately in the plaintext session file, while tokens for unselected environments remain; concurrent lognav processes can overwrite one another's updates. When a passcode is required, its URL is printed and, when `core.openBrowser` is enabled, opened by default; `--no-open` overrides the config and browser-launch failure is a warning.\n\nWith `auto`, if IAM rejects a saved refresh token, lognav clears it and continues to a configured credential. A configured credential failure returns immediately. `lognav query` uses the same noninteractive sources but never prompts.",
+		Example: "  lognav login\n  lognav login refresh --environment my-cloud\n  lognav login passcode --environment my-cloud --no-open\n  lognav login --environment my-cloud --environment bluemix",
+		Args: func(_ *cobra.Command, args []string) error {
+			credentialMode = icl.CredentialModeAuto
+			if len(args) > 1 {
+				return WithExit(ExitUsage, errors.New("accepts at most one credential mode"))
+			}
+			if len(args) == 0 {
+				return nil
+			}
+			mode, err := icl.ParseCredentialMode(args[0])
+			if err != nil {
+				return WithExit(ExitUsage, err)
+			}
+			credentialMode = mode
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			bundle, err := loadBundle(cmd)
 			if err != nil {
@@ -46,10 +61,15 @@ func initLogin(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobra.Comm
 			if err != nil {
 				return err
 			}
-			return runLogin(ctxOrBackground(cmd.Context()), cmd, selected, bundle.Config.Core.OpenBrowser && !noOpen, bundle.Config.ICL.Environments)
+			return runLogin(ctxOrBackground(cmd.Context()), cmd, selected, bundle.Config.Core.OpenBrowser && !noOpen, credentialMode, bundle.Config.ICL.Environments)
 		},
 	}
-	cmd.ValidArgsFunction = cobra.NoFileCompletions
+	cmd.ValidArgsFunction = func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return icl.CredentialModes(), cobra.ShellCompDirectiveNoFileComp
+	}
 	cmd.Flags().StringArrayVarP(&environments, "environment", "e", nil, "configured IAM environment (repeatable)")
 	_ = cmd.RegisterFlagCompletionFunc("environment", func(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		bundle, err := loadBundle(cmd)
@@ -64,11 +84,13 @@ func initLogin(loadBundle func(*cobra.Command) (deps.Bundle, error)) *cobra.Comm
 
 // runLogin loads the existing session once, then checkpoints each successful
 // environment so a later failure cannot discard an earlier login.
-func runLogin(ctx context.Context, cmd *cobra.Command, selected []icl.Environment, shouldOpenBrowser bool, environments map[string]config.ICLEnvironmentConfig) error {
+func runLogin(ctx context.Context, cmd *cobra.Command, selected []icl.Environment, shouldOpenBrowser bool, credentialMode icl.CredentialMode, environments map[string]config.ICLEnvironmentConfig) error {
 	manager := newLoginAccountManager(environments)
-	for cname, environment := range environments {
-		if key, ok := environment.APIKeyEnvOverride(loginGetenv); ok {
-			manager.SetAPIKey(icl.Environment(cname), key, environment.APIKeyEnvVar)
+	if credentialMode == icl.CredentialModeAuto || credentialMode == icl.CredentialModeEnv {
+		for cname, environment := range environments {
+			if key, ok := environment.APIKeyEnvOverride(loginGetenv); ok {
+				manager.SetAPIKey(icl.Environment(cname), key, environment.APIKeyEnvVar)
+			}
 		}
 	}
 	sessionPath, err := loginSessionPath()
@@ -82,28 +104,28 @@ func runLogin(ctx context.Context, cmd *cobra.Command, selected []icl.Environmen
 	manager.SetRefreshTokens(tokens)
 
 	for _, env := range selected {
-		if err := loginEnvironment(ctx, cmd, manager, sessionPath, env, shouldOpenBrowser); err != nil {
+		if err := loginEnvironment(ctx, cmd, manager, sessionPath, env, shouldOpenBrowser, credentialMode); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// loginEnvironment resolves the configured credential chain, falling back to
-// an interactive passcode, and immediately persists the merged refresh tokens.
-func loginEnvironment(ctx context.Context, cmd *cobra.Command, manager *icl.AccountManager, sessionPath string, env icl.Environment, shouldOpenBrowser bool) error {
+// loginEnvironment resolves the selected credential mode, falling back to an
+// interactive passcode only for auto, and immediately persists refresh tokens.
+func loginEnvironment(ctx context.Context, cmd *cobra.Command, manager *icl.AccountManager, sessionPath string, env icl.Environment, shouldOpenBrowser bool, credentialMode icl.CredentialMode) error {
 	logger := slog.Default().With("component", "login", "event", "standalone_login", "environment", env)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	logger.Debug("standalone login checkpoint", "operation", "authentication", "stage", "started")
-	method, err := manager.AuthenticateEnvironment(ctx, env)
+	method, err := manager.AuthenticateEnvironmentWithCredentialMode(ctx, env, credentialMode)
 	if err == nil {
 		logger.Debug("standalone login checkpoint", "operation", "authentication", "stage", "succeeded", "method", method)
 	} else {
 		var passcodeRequired *icl.PasscodeRequired
 		if !errors.As(err, &passcodeRequired) {
-			return loginIAMError(ctx, env, "IAM authentication", "authentication", err)
+			return loginAuthenticationError(ctx, env, err)
 		}
 		logger.Debug("standalone login checkpoint", "operation", "authentication", "stage", "passcode_required")
 		if err := loginWithPasscode(ctx, cmd, manager, env, passcodeRequired.GetPasscodeURL(), shouldOpenBrowser); err != nil {
@@ -119,6 +141,17 @@ func loginEnvironment(ctx context.Context, cmd *cobra.Command, manager *icl.Acco
 	logger.Debug("standalone login checkpoint", "operation", "session_save", "stage", "succeeded")
 	fmt.Fprintf(cmd.OutOrStdout(), "Logged in to %s via %s.\n", env, method)
 	return nil
+}
+
+func loginAuthenticationError(ctx context.Context, env icl.Environment, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	var credentialModeErr *icl.CredentialModeError
+	if errors.As(err, &credentialModeErr) {
+		return WithExit(ExitUnavailable, credentialModeErr)
+	}
+	return loginIAMError(ctx, env, "IAM authentication", "authentication", err)
 }
 
 func loginWithPasscode(ctx context.Context, cmd *cobra.Command, manager *icl.AccountManager, env icl.Environment, passcodeURL string, shouldOpenBrowser bool) error {

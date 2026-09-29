@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bevicted/lognav/internal/icl"
 	"github.com/bevicted/lognav/internal/snapshot"
 )
 
@@ -23,7 +24,6 @@ func TestNoArgumentCompletionSuppressesFiles(t *testing.T) {
 	root := newRootCmd(noopSetup(t))
 	for _, path := range [][]string{
 		{"version"},
-		{"login"},
 		{"logout"},
 		{"query"},
 		{"snapshot", "list"},
@@ -45,6 +45,20 @@ func TestNoArgumentCompletionSuppressesFiles(t *testing.T) {
 			assert.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
 		})
 	}
+}
+
+func TestLoginCredentialModeCompletion(t *testing.T) {
+	root := newRootCmd(noopSetup(t))
+	login, _, err := root.Find([]string{"login"})
+	require.NoError(t, err)
+
+	got, directive := login.ValidArgsFunction(login, nil, "")
+	assert.Equal(t, icl.CredentialModes(), got)
+	assert.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
+
+	got, directive = login.ValidArgsFunction(login, []string{"auto"}, "")
+	assert.Empty(t, got)
+	assert.Equal(t, cobra.ShellCompDirectiveNoFileComp, directive)
 }
 
 // TestSnapshotSelectorCompletionMatchesAcceptedInputs checks selectors,

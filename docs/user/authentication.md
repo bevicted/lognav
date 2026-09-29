@@ -52,15 +52,21 @@ command arguments.
 
 ## Login and saved sessions
 
-Run `lognav login` to authenticate before starting the TUI. It uses the same
-credential order as the TUI, including the selected environment variable,
-configured API key, and 1Password reference. An IBM Cloud CLI session is not
-used. If no noninteractive credential is available, login uses terminal stdin,
-prints the passcode URL, and reads the pasted passcode without echo. It opens
-the URL when `core.openBrowser` is enabled, which is the default; `--no-open`
-overrides that setting. A terminal is required only for this passcode fallback.
-On success, login reports the credential source it used. See
-`lognav login --help` for environment selection.
+Run `lognav login` to authenticate before starting the TUI. No argument and
+`lognav login auto` use the same credential order as the TUI, including the
+selected environment variable, configured API key, and 1Password reference.
+Use `lognav login refresh`, `lognav login env`, `lognav login api-key`, or
+`lognav login 1password` to require only that credential source. Use
+`lognav login passcode` to bypass saved and configured credentials and start
+the browser/passcode flow. A forced mode never
+falls back to another source; an unavailable or rejected selected credential is
+an error. Credential values are never accepted as command arguments. An IBM
+Cloud CLI session is not used. If passcode authentication is required, login
+uses terminal stdin, prints the passcode URL, and reads the pasted passcode
+without echo. It opens the URL when `core.openBrowser` is enabled, which is the
+default; `--no-open` overrides that setting. A terminal is required only for
+this passcode flow. On success, login reports the credential source it used.
+See `lognav login --help` for environment selection.
 
 A successful exchange that returns a refresh token stores it in plaintext
 `$XDG_STATE_HOME/lognav/session.json` (normally

@@ -312,7 +312,8 @@ func TestAuthenticationAndDocsHelpContracts(t *testing.T) {
 		"passcodes are read with echo disabled and cannot be passed as an argument or redirected.",
 		"Each successful environment is saved immediately in the plaintext session file",
 		"concurrent lognav processes can overwrite one another's updates.",
-		"If IAM rejects a saved refresh token, lognav clears it and continues to a configured credential.",
+		"With `auto`, if IAM rejects a saved refresh token, lognav clears it and continues to a configured credential.",
+		"A forced mode never falls back to another credential source.",
 		"A configured credential failure returns immediately.",
 		"`lognav query` uses the same noninteractive sources but never prompts.",
 	} {

@@ -52,7 +52,9 @@ transport and parse failures return an error and leave it available for a later
 retry. A configured credential lookup or exchange failure is returned
 immediately. The TUI and `lognav login` may request a passcode when no
 noninteractive credential remains. Login resolves the same chain without an
-instance CRN and saves any resulting refresh token. `GetAuthTokenNoPasscode`,
+instance CRN and saves any resulting refresh token. Its optional credential
+mode can instead select only a refresh token, environment API key, configured
+API key, 1Password reference, or passcode flow, without fallback. `GetAuthTokenNoPasscode`,
 used by headless query callers, instead stops with `HeadlessAuthRequiredError`
 when passcode authentication would be needed.
 

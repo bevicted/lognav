@@ -286,6 +286,96 @@ func TestLogin_ReportsRefreshTokenMethod(t *testing.T) { //nolint:paralleltest /
 	assert.Equal(t, map[icl.Environment]string{icl.EnvProd: "rotated-refresh"}, saved)
 }
 
+func TestLogin_ForcedCredentialModesUseOnlyTheSelectedSource(t *testing.T) { //nolint:paralleltest // replaces command seams
+	for _, tt := range []struct {
+		mode          string
+		method        icl.AuthenticationMethod
+		grant, key    string
+		passcode      string
+		wantGetenv    int
+		needsTerminal bool
+	}{
+		{mode: "refresh", method: icl.AuthenticationMethodRefreshToken, grant: "refresh_token"},
+		{mode: "env", method: icl.AuthenticationMethodEnvironmentAPIKey, grant: "urn:ibm:params:oauth:grant-type:apikey", key: "environment-key", wantGetenv: 1},
+		{mode: "api-key", method: icl.AuthenticationMethodConfiguredAPIKey, grant: "urn:ibm:params:oauth:grant-type:apikey", key: "configured-key"},
+		{mode: "passcode", method: icl.AuthenticationMethodPasscode, grant: "urn:ibm:params:oauth:grant-type:passcode", passcode: "0123456789", needsTerminal: true},
+	} {
+		t.Run(tt.mode, func(t *testing.T) {
+			setLoginSeams(t)
+			var grant, key, passcode string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !assert.NoError(t, r.ParseForm()) {
+					return
+				}
+				grant = r.Form.Get("grant_type")
+				key = r.Form.Get("apikey")
+				passcode = r.Form.Get("passcode")
+				_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"rotated-refresh","expires_in":3600}`)
+			}))
+			t.Cleanup(srv.Close)
+
+			cfg := config.New()
+			cfg.ICL.Environments = map[string]config.ICLEnvironmentConfig{
+				//nolint:gosec // synthetic test credential
+				"bluemix": {
+					IAMURL:       "https://iam.example/identity",
+					APIKey:       "configured-key",
+					APIKeyEnvVar: "LOGIN_TEST_API_KEY",
+					APIKeyOpRef:  "op://vault/item/field",
+				},
+			}
+			newLoginAccountManager = func(environments map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
+				manager := icl.NewAccountManager(environments)
+				manager.SetOIDCForTest(icl.EnvProd, srv.URL, srv.URL)
+				return manager
+			}
+			getenvCalls := 0
+			loginGetenv = func(string) string {
+				getenvCalls++
+				return "environment-key"
+			}
+			loginSessionPath = func() (string, error) { return "session", nil }
+			loadLoginSession = func(string) (map[icl.Environment]string, error) {
+				return map[icl.Environment]string{icl.EnvProd: "saved-refresh"}, nil
+			}
+			saveLoginSession = func(string, map[icl.Environment]string) error { return nil }
+			isTTY = func() bool { return tt.needsTerminal }
+			readLoginPasscode = func(context.Context) ([]byte, error) {
+				if !tt.needsTerminal {
+					t.Fatal("only passcode mode may read a passcode")
+				}
+				return []byte(tt.passcode), nil
+			}
+
+			stdout, stderr, err := runLoginCommandWithConfig(t, cfg, tt.mode, "--no-open")
+			require.NoError(t, err)
+			assert.Empty(t, stderr)
+			assert.Contains(t, stdout, "Logged in to bluemix via "+string(tt.method)+".")
+			assert.Equal(t, tt.grant, grant)
+			assert.Equal(t, tt.key, key)
+			assert.Equal(t, tt.passcode, passcode)
+			assert.Equal(t, tt.wantGetenv, getenvCalls)
+		})
+	}
+}
+
+func TestLogin_RejectsCredentialValuesAsModes(t *testing.T) {
+	const credential = "synthetic-api-key-value"
+	loaded := false
+	root := newRootCmd(func(bool) (deps.Bundle, error) {
+		loaded = true
+		return deps.Bundle{}, nil
+	})
+	root.SetArgs([]string{"login", credential})
+
+	err := root.Execute()
+	require.Error(t, err)
+	assert.Equal(t, ExitUsage, ExitCode(err))
+	require.ErrorContains(t, err, "invalid credential mode")
+	assert.NotContains(t, err.Error(), credential)
+	assert.False(t, loaded)
+}
+
 func TestLogin_BrowserConfigAndNoOpen(t *testing.T) { //nolint:paralleltest // replaces command seams
 	setLoginSeams(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
