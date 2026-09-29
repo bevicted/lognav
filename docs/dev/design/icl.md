@@ -50,9 +50,11 @@ process, so a successful environment lookup is reused. A rejected IAM refresh
 grant clears that refresh token and continues through the configured credential sources;
 transport and parse failures return an error and leave it available for a later
 retry. A configured credential lookup or exchange failure is returned
-immediately. The TUI may request a passcode when no noninteractive credential
-remains. `GetAuthTokenNoPasscode`, used by headless callers, instead stops with
-`HeadlessAuthRequiredError` when passcode authentication would be needed.
+immediately. The TUI and `lognav login` may request a passcode when no
+noninteractive credential remains. Login resolves the same chain without an
+instance CRN and saves any resulting refresh token. `GetAuthTokenNoPasscode`,
+used by headless query callers, instead stops with `HeadlessAuthRequiredError`
+when passcode authentication would be needed.
 
 Refresh tokens are a plaintext JSON map by environment in `session.json`.
 `SessionPath` only resolves its location. `SaveSession` creates or repairs the

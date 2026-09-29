@@ -304,15 +304,16 @@ func TestAuthenticationAndDocsHelpContracts(t *testing.T) {
 
 	login := commandHelp(t, "login")
 	for _, want := range []string{
-		"uses configured IAM discovery endpoints but deliberately omits configured API keys, 1Password references, and an IBM Cloud CLI session.",
-		"Terminal stdin is required",
+		"same credential chain as the TUI",
+		"API key selected by the environment's configured environment variable, configured API key, configured 1Password reference",
+		"An IBM Cloud CLI session is not used.",
+		"Terminal stdin is required only when the chain reaches the passcode flow",
 		"passcodes are read with echo disabled and cannot be passed as an argument or redirected.",
 		"Each successful environment is saved immediately in the plaintext session file",
 		"concurrent lognav processes can overwrite one another's updates.",
-		"cached access token, then saved refresh token, then configured API key or 1Password reference.",
 		"If IAM rejects a saved refresh token, lognav clears it and continues to a configured credential.",
 		"A configured credential failure returns immediately.",
-		"`lognav query` never prompts.",
+		"`lognav query` uses the same noninteractive sources but never prompts.",
 	} {
 		assert.Contains(t, login, want)
 	}

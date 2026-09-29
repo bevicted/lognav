@@ -13,7 +13,7 @@ For an instance account, lognav uses the first available source in this order:
 2. A saved refresh token
 3. A configured API key
 4. A configured 1Password API-key reference
-5. An interactive IAM passcode, in the TUI only
+5. An interactive IAM passcode, in the TUI or `lognav login`
 
 If IAM rejects a saved refresh token, lognav clears it and continues to a
 configured API key or 1Password reference. A configured credential
@@ -52,13 +52,16 @@ command arguments.
 
 ## Login and saved sessions
 
-Run `lognav login` for the browser/passcode flow. It uses terminal stdin,
-prints the passcode URL, and reads the pasted passcode without echo. It does
-not use configured API keys, 1Password, or an IBM Cloud CLI session. It opens
+Run `lognav login` to authenticate before starting the TUI. It uses the same
+credential order as the TUI, including the selected environment variable,
+configured API key, and 1Password reference. An IBM Cloud CLI session is not
+used. If no noninteractive credential is available, login uses terminal stdin,
+prints the passcode URL, and reads the pasted passcode without echo. It opens
 the URL when `core.openBrowser` is enabled, which is the default; `--no-open`
-overrides that setting. See `lognav login --help` for environment selection.
+overrides that setting. A terminal is required only for this passcode fallback.
+See `lognav login --help` for environment selection.
 
-A successful passcode exchange stores a refresh token in plaintext
+A successful exchange that returns a refresh token stores it in plaintext
 `$XDG_STATE_HOME/lognav/session.json` (normally
 `~/.local/state/lognav/session.json`). lognav creates the directory with mode
 `0700` and replaces the file with mode `0600` on Unix-like systems. This is not

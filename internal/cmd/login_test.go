@@ -52,6 +52,7 @@ func setLoginSeams(t *testing.T) {
 	oldLoad := loadLoginSession
 	oldSave := saveLoginSession
 	oldReader := readLoginPasscode
+	oldGetenv := loginGetenv
 	oldTTY := isTTY
 	oldBrowser := openBrowser
 	t.Cleanup(func() {
@@ -60,6 +61,7 @@ func setLoginSeams(t *testing.T) {
 		loadLoginSession = oldLoad
 		saveLoginSession = oldSave
 		readLoginPasscode = oldReader
+		loginGetenv = oldGetenv
 		isTTY = oldTTY
 		openBrowser = oldBrowser
 	})
@@ -173,6 +175,75 @@ func TestLogin_DefaultAndRepeatedEnvironments(t *testing.T) { //nolint:parallelt
 	})
 }
 
+func TestLogin_UsesConfiguredAPIKeyWithoutTTY(t *testing.T) { //nolint:paralleltest // replaces command seams
+	for _, tt := range []struct {
+		name           string
+		configuredKey  string
+		environmentKey string
+		wantKey        string
+	}{
+		{name: "configured API key", configuredKey: "configured-key", wantKey: "configured-key"},
+		{name: "environment API key overrides configured key", configuredKey: "configured-key", environmentKey: "environment-key", wantKey: "environment-key"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			setLoginSeams(t)
+			var gotKey, gotGrant string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !assert.NoError(t, r.ParseForm()) {
+					return
+				}
+				gotKey = r.Form.Get("apikey")
+				gotGrant = r.Form.Get("grant_type")
+				_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"refresh","expires_in":3600}`)
+			}))
+			t.Cleanup(srv.Close)
+
+			cfg := config.New()
+			cfg.ICL.Environments = map[string]config.ICLEnvironmentConfig{
+				//nolint:gosec // synthetic test credential
+				"bluemix": {
+					IAMURL:       "https://iam.example/identity",
+					APIKey:       tt.configuredKey,
+					APIKeyEnvVar: "LOGIN_TEST_API_KEY",
+				},
+			}
+			newLoginAccountManager = func(environments map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
+				manager := icl.NewAccountManager(environments)
+				manager.SetOIDCForTest(icl.EnvProd, srv.URL, srv.URL)
+				return manager
+			}
+			loginGetenv = func(name string) string {
+				assert.Equal(t, "LOGIN_TEST_API_KEY", name)
+				return tt.environmentKey
+			}
+			loginSessionPath = func() (string, error) { return "session", nil }
+			loadLoginSession = func(string) (map[icl.Environment]string, error) { return map[icl.Environment]string{}, nil }
+			var saved map[icl.Environment]string
+			saveLoginSession = func(_ string, tokens map[icl.Environment]string) error {
+				saved = maps.Clone(tokens)
+				return nil
+			}
+			isTTY = func() bool { return false }
+			readLoginPasscode = func(context.Context) ([]byte, error) {
+				t.Fatal("configured credentials must not prompt for a passcode")
+				return nil, nil
+			}
+			openBrowser = func(context.Context, string) error {
+				t.Fatal("configured credentials must not open a browser")
+				return nil
+			}
+
+			stdout, stderr, err := runLoginCommandWithConfig(t, cfg)
+			require.NoError(t, err)
+			assert.Empty(t, stderr)
+			assert.Contains(t, stdout, "Logged in to bluemix.")
+			assert.Equal(t, tt.wantKey, gotKey)
+			assert.Equal(t, "urn:ibm:params:oauth:grant-type:apikey", gotGrant)
+			assert.Equal(t, map[icl.Environment]string{icl.EnvProd: "refresh"}, saved)
+		})
+	}
+}
+
 func TestLogin_BrowserConfigAndNoOpen(t *testing.T) { //nolint:paralleltest // replaces command seams
 	setLoginSeams(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -237,7 +308,8 @@ func TestLogin_DiagnosticLogsCheckpoints(t *testing.T) { //nolint:paralleltest /
 	logs := logBuf.String()
 	assert.Contains(t, logs, `"event":"standalone_login"`)
 	assert.Contains(t, logs, `"environment":"bluemix"`)
-	assert.Contains(t, logs, `"operation":"passcode_discovery","stage":"started"`)
+	assert.Contains(t, logs, `"operation":"authentication","stage":"started"`)
+	assert.Contains(t, logs, `"operation":"authentication","stage":"passcode_required"`)
 	assert.Contains(t, logs, `"operation":"passcode_exchange","stage":"succeeded"`)
 	assert.Contains(t, logs, `"operation":"session_save","stage":"succeeded"`)
 	assert.NotContains(t, logs, passcode)
@@ -282,7 +354,7 @@ func TestLogin_EmptyNormalizedPasscodeDiagnosticLogsAreSecretSafe(t *testing.T) 
 	assert.NotContains(t, logs, tokenEndpoint)
 }
 
-func TestLogin_PreflightRejectsInvalidEnvironmentAndNonTTY(t *testing.T) { //nolint:paralleltest // replaces command seams
+func TestLogin_PreflightRejectsInvalidEnvironmentAndNonTTYPasscode(t *testing.T) { //nolint:paralleltest // replaces command seams
 	t.Run("invalid environment", func(t *testing.T) {
 		setLoginSeams(t)
 		called := false
@@ -295,11 +367,21 @@ func TestLogin_PreflightRejectsInvalidEnvironmentAndNonTTY(t *testing.T) { //nol
 		assert.False(t, called)
 	})
 
-	t.Run("non tty has no side effects", func(t *testing.T) {
+	t.Run("non tty rejects passcode without interactive side effects", func(t *testing.T) {
 		setLoginSeams(t)
-		var manager, session, reader, browser bool
-		newLoginAccountManager = func(_ map[string]config.ICLEnvironmentConfig) *icl.AccountManager { manager = true; return nil }
-		loginSessionPath = func() (string, error) { session = true; return "", nil }
+		var managerCalled, sessionLoaded, sessionSaved, reader, browser bool
+		newLoginAccountManager = func(_ map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
+			managerCalled = true
+			manager := icl.NewAccountManager(loginTestEnvironments())
+			manager.SetOIDCForTest(icl.EnvProd, "https://iam.example/token", "https://iam.example/passcode")
+			return manager
+		}
+		loginSessionPath = func() (string, error) { return "session", nil }
+		loadLoginSession = func(string) (map[icl.Environment]string, error) {
+			sessionLoaded = true
+			return map[icl.Environment]string{}, nil
+		}
+		saveLoginSession = func(string, map[icl.Environment]string) error { sessionSaved = true; return nil }
 		readLoginPasscode = func(context.Context) ([]byte, error) { reader = true; return nil, nil }
 		openBrowser = func(context.Context, string) error { browser = true; return nil }
 		isTTY = func() bool { return false }
@@ -307,9 +389,12 @@ func TestLogin_PreflightRejectsInvalidEnvironmentAndNonTTY(t *testing.T) { //nol
 		stdout, stderr, err := runLoginCommand(t)
 		require.Error(t, err)
 		assert.Equal(t, ExitUsage, ExitCode(err))
+		require.ErrorContains(t, err, "interactive terminal when passcode authentication is required")
 		assert.Empty(t, stdout)
 		assert.Empty(t, stderr)
-		assert.False(t, manager || session || reader || browser)
+		assert.True(t, managerCalled)
+		assert.True(t, sessionLoaded)
+		assert.False(t, sessionSaved || reader || browser)
 	})
 }
 
@@ -356,7 +441,7 @@ func TestLogin_BrowserFallbackCheckpointAndSecretFreeErrors(t *testing.T) { //no
 	assert.Equal(t, ExitUnavailable, ExitCode(err))
 	require.EqualError(t, err, "IAM passcode exchange failed")
 	assert.Contains(t, stderr, "Warning: could not open browser; open the URL manually.")
-	require.Equal(t, 2, calls)
+	require.Equal(t, 3, calls)
 	require.Len(t, saves, 1, "the successful custom-environment login must checkpoint before production fails")
 	assert.Equal(t, map[icl.Environment]string{icl.EnvProd: "previous-prod-refresh", icl.Environment("test-cloud"): "stage-refresh"}, saves[0])
 	for _, secret := range []string{"stage-passcode", "prod-passcode", "stage-refresh", "previous-prod-refresh", "browser URL error"} {

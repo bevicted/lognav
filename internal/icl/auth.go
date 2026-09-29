@@ -137,18 +137,6 @@ func NewAccountManager(environments map[string]config.ICLEnvironmentConfig) *Acc
 	return &AccountManager{envs: envs, nowFunc: time.Now}
 }
 
-// NewPasscodeAccountManager builds a manager that retains configured IAM URLs
-// but deliberately omits configured noninteractive credentials.
-func NewPasscodeAccountManager(environments map[string]config.ICLEnvironmentConfig) *AccountManager {
-	passcodeEnvironments := make(map[string]config.ICLEnvironmentConfig, len(environments))
-	for cname, environment := range environments {
-		environment.APIKey = ""
-		environment.APIKeyOpRef = ""
-		passcodeEnvironments[cname] = environment
-	}
-	return NewAccountManager(passcodeEnvironments)
-}
-
 // now returns the current time via the injected nowFunc (a test seam; the
 // constructor always sets it to time.Now).
 func (am *AccountManager) now() time.Time {
@@ -524,21 +512,31 @@ func (am *AccountManager) GetAuthTokenNoPasscode(ctx context.Context, crn *confi
 	return am.getAuthToken(ctx, crn, false)
 }
 
-// getAuthToken implements the shared credential chain. allowPasscode retains
-// the TUI's passcode behavior while headless callers receive HeadlessAuthRequiredError.
-//
-//nolint:gocyclo // sequential auth chain; each branch handles a distinct credential path.
+// AuthenticateEnvironment runs the interactive credential chain without an
+// instance CRN. It is used when callers need to establish an environment
+// session rather than access one specific account.
+func (am *AccountManager) AuthenticateEnvironment(ctx context.Context, env Environment) error {
+	_, err := am.getAuthTokenForAccount(ctx, env, "", true)
+	return err
+}
+
 func (am *AccountManager) getAuthToken(ctx context.Context, crn *config.CRN, allowPasscode bool) (string, error) {
 	if crn == nil {
 		return "", errors.New("missing instance CRN")
 	}
-	env := Environment(crn.CName)
+	return am.getAuthTokenForAccount(ctx, Environment(crn.CName), crn.ScopeID, allowPasscode)
+}
+
+// getAuthTokenForAccount implements the shared credential chain. allowPasscode
+// retains the TUI's passcode behavior while headless callers receive
+// HeadlessAuthRequiredError.
+//
+//nolint:gocyclo // sequential auth chain; each branch handles a distinct credential path.
+func (am *AccountManager) getAuthTokenForAccount(ctx context.Context, env Environment, accountID string, allowPasscode bool) (string, error) {
 	ea, ok := am.envs[env]
 	if !ok {
-		return "", fmt.Errorf("unsupported ICL environment %q", crn.CName)
+		return "", fmt.Errorf("unsupported ICL environment %q", env)
 	}
-	accountID := crn.ScopeID
-
 	ea.mu.Lock()
 	defer ea.mu.Unlock()
 
