@@ -1134,16 +1134,13 @@ func (m *Model) refreshList() {
 	}
 }
 
-// longestInstanceName returns the width of the instance-name column: the longest
-// configured instance name. It measures with len (bytes) exactly as the per-frame
-// scan it replaces did — this is a hoist, not a fix, so the padding of a
-// non-ASCII name must not shift. The instance set is built once from config by
-// NewInstances and never grows or shrinks during a session, so this is a
-// construction-time constant rather than a per-frame scan.
+// longestInstanceName returns the display width of the longest instance name.
+// The instance set is built once from config by NewInstances and changes only
+// when snapshot-only rows are added or removed, so callers can cache this width.
 func longestInstanceName(instances Instances) int {
 	longest := 0
 	for _, r := range instances {
-		longest = max(longest, len(r.Name))
+		longest = max(longest, uniseg.StringWidth(r.Name))
 	}
 	return longest
 }
@@ -1189,9 +1186,10 @@ func InstanceRowSegments(label string, labelStyle uv.Style, labelWidth int, name
 	// padding misaligns the column. labelWidth comes from status.MaxLabelWidth,
 	// which measures the same way. max() guards an over-wide label (negative pad).
 	labelPad := max(labelWidth-uniseg.StringWidth(label), 0)
+	namePad := max(nameWidth-uniseg.StringWidth(name), 0)
 	return []list.Segment{
 		{Text: label + strings.Repeat(" ", labelPad), Style: labelStyle},
-		{Text: fmt.Sprintf("  %-*s  %5d  %*s", nameWidth, name, logCount, timeWidth, timeStr)},
+		{Text: "  " + name + strings.Repeat(" ", namePad) + fmt.Sprintf("  %5d  %*s", logCount, timeWidth, timeStr)},
 	}
 }
 
