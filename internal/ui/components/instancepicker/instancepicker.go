@@ -963,6 +963,7 @@ func (m *Model) OnMemberAuthFailed(msg MemberAuthFailedMsg) {
 	}
 	if inst := m.instances.FindByCRN(msg.CRN); inst != nil {
 		m.logger.Error("member auth failed", logging.KeyError, msg.Err, logging.KeyInstance, inst.Name)
+		inst.Store.SetMessage(msg.Err.Error())
 		inst.lastUpdateTime = time.Now()
 		inst.state = status.Error
 	}
@@ -977,7 +978,7 @@ func (m *Model) OnEnvCredFailed(msg EnvCredFailedMsg) {
 		return
 	}
 	m.logger.Error("env credential resolution failed", logging.KeyError, msg.Err, "env", string(msg.Env))
-	m.instances.TransitionAuthing(msg.Env, status.Error)
+	m.instances.TransitionAuthing(msg.Env, status.Error, msg.Err.Error())
 	m.settle()
 	m.syncInstanceState()
 }
@@ -990,7 +991,7 @@ func (m *Model) OnEnvAuthCancelled(msg EnvAuthCancelledMsg) {
 		return
 	}
 	m.logger.Info("env auth cancelled", "env", string(msg.Env))
-	m.instances.TransitionAuthing(msg.Env, status.Cancelled)
+	m.instances.TransitionAuthing(msg.Env, status.Cancelled, "")
 	m.settle()
 	m.syncInstanceState()
 }
@@ -1036,7 +1037,7 @@ func (m *Model) OnPasscodeSuccess(msg PasscodeSuccessMsg) {
 // OnPasscodeError errors the env's auth-pending members and re-checks finalize.
 func (m *Model) OnPasscodeError(msg PasscodeErrorMsg) {
 	m.logger.Error("passcode auth failed", logging.KeyError, msg.Err, "env", string(msg.Env))
-	m.instances.TransitionAuthing(msg.Env, status.Error)
+	m.instances.TransitionAuthing(msg.Env, status.Error, msg.Err.Error())
 	m.emit(msgs.ShowDialogMsg{
 		Title:   "Authentication Failed",
 		Message: msg.Err.Error(),
@@ -1050,7 +1051,7 @@ func (m *Model) OnPasscodeError(msg PasscodeErrorMsg) {
 // re-checks finalize in case all other queries already completed.
 func (m *Model) OnPasscodeCancelled(msg PasscodeCancelledMsg) {
 	m.logger.Info("passcode auth cancelled", "env", string(msg.Env))
-	m.instances.TransitionAuthing(msg.Env, status.Enabled)
+	m.instances.TransitionAuthing(msg.Env, status.Enabled, "")
 	m.settle()
 	m.syncInstanceState()
 }
@@ -1133,16 +1134,13 @@ func (m *Model) refreshList() {
 	}
 }
 
-// longestInstanceName returns the width of the instance-name column: the longest
-// configured instance name. It measures with len (bytes) exactly as the per-frame
-// scan it replaces did — this is a hoist, not a fix, so the padding of a
-// non-ASCII name must not shift. The instance set is built once from config by
-// NewInstances and never grows or shrinks during a session, so this is a
-// construction-time constant rather than a per-frame scan.
+// longestInstanceName returns the display width of the longest instance name.
+// The instance set is built once from config by NewInstances and changes only
+// when snapshot-only rows are added or removed, so callers can cache this width.
 func longestInstanceName(instances Instances) int {
 	longest := 0
 	for _, r := range instances {
-		longest = max(longest, len(r.Name))
+		longest = max(longest, uniseg.StringWidth(r.Name))
 	}
 	return longest
 }
@@ -1188,9 +1186,10 @@ func InstanceRowSegments(label string, labelStyle uv.Style, labelWidth int, name
 	// padding misaligns the column. labelWidth comes from status.MaxLabelWidth,
 	// which measures the same way. max() guards an over-wide label (negative pad).
 	labelPad := max(labelWidth-uniseg.StringWidth(label), 0)
+	namePad := max(nameWidth-uniseg.StringWidth(name), 0)
 	return []list.Segment{
 		{Text: label + strings.Repeat(" ", labelPad), Style: labelStyle},
-		{Text: fmt.Sprintf("  %-*s  %5d  %*s", nameWidth, name, logCount, timeWidth, timeStr)},
+		{Text: "  " + name + strings.Repeat(" ", namePad) + fmt.Sprintf("  %5d  %*s", logCount, timeWidth, timeStr)},
 	}
 }
 
@@ -1781,8 +1780,8 @@ func (m *Model) cancelAllFetches() {
 	}
 	m.authGeneration++
 	m.authCtx, m.cancelAuth = context.WithCancel(m.ctx)
-	m.instances.TransitionAuthing("", status.Cancelled) // auth-pending members (incl. a dispatch's AuthInProgress instances)
-	m.instances.CancelQuery()                           // in-flight queries (InProgress)
+	m.instances.TransitionAuthing("", status.Cancelled, "") // auth-pending members (incl. a dispatch's AuthInProgress instances)
+	m.instances.CancelQuery()                               // in-flight queries (InProgress)
 	m.settle()
 	// settle() -> maybeFinalizeFetch() normally resets m.collecting (it reads it
 	// inside, so the reset is deferred to its end). But settle() can return early
@@ -2415,8 +2414,8 @@ func (m *Model) saveSession() {
 	m.lastSavedSession = maps.Clone(tokens)
 }
 
-func (m *Model) SetAPIKey(env icl.Environment, key string) {
-	m.authManager.SetAPIKey(env, key)
+func (m *Model) SetAPIKey(env icl.Environment, key, source string) {
+	m.authManager.SetAPIKey(env, key, source)
 }
 
 func (m *Model) syncInstanceState() {

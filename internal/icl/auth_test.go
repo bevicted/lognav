@@ -65,6 +65,67 @@ func TestNewAccountManager(t *testing.T) {
 	assert.Empty(t, am.envs[Environment("test-cloud")].accessTokens)
 }
 
+func TestGetAuthToken_EnvironmentAPIKeyFailureIdentifiesActualSource(t *testing.T) {
+	const (
+		source = "LOGNAV_TEST_API_KEY"
+		key    = "synthetic-environment-key"
+	)
+	var keys []string
+	srv := newIAMStubServer(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		keys = append(keys, r.Form.Get("apikey"))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`)
+	})
+
+	am := testAccountManager("configured-key", "", "", "")
+	am.SetOIDCForTest(EnvProd, srv.URL)
+	am.SetAPIKey(EnvProd, key, source)
+
+	_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
+	require.Error(t, err)
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_TEST_API_KEY" token exchange failed`)
+	assert.NotContains(t, err.Error(), key)
+	var iamErr *IAMError
+	require.ErrorAs(t, err, &iamErr)
+	assert.Equal(t, "BXNIM0401E", iamErr.Code)
+
+	am.SetAPIKey(EnvProd, "configured-key", "")
+	_, err = am.GetAuthTokenNoPasscode(t.Context(), testCRN())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "API key token exchange failed")
+	assert.NotContains(t, err.Error(), source)
+	assert.Equal(t, []string{key, "configured-key"}, keys)
+}
+
+func TestGetAuthToken_EnvironmentAPIKeyDiscoveryFailureIdentifiesSource(t *testing.T) { //nolint:paralleltest // replaces the package HTTP client
+	const (
+		source = "LOGNAV_DISCOVERY_TEST_API_KEY"
+		key    = "synthetic-discovery-key"
+	)
+	sentinel := errors.New("discovery transport failed")
+	original := httpClient
+	t.Cleanup(func() { httpClient = original })
+	httpClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, sentinel
+	})}
+
+	am := testAccountManager("configured-key", "", "", "")
+	am.SetAPIKey(EnvProd, key, source)
+
+	_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
+	require.Error(t, err)
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_DISCOVERY_TEST_API_KEY" token exchange failed`)
+	require.ErrorIs(t, err, sentinel)
+	assert.NotContains(t, err.Error(), key)
+
+	noKey := testAccountManager("", "", "", "")
+	_, err = noKey.GetAuthToken(t.Context(), testCRN())
+	require.Error(t, err)
+	require.ErrorIs(t, err, sentinel)
+	assert.NotContains(t, err.Error(), source, "SSO discovery must not claim an unused environment key")
+}
+
 func TestQueryOIDCConfig_InvalidURL(t *testing.T) {
 	_, err := queryOIDCConfig(t.Context(), "http://localhost:1/nonexistent")
 	if err == nil {
@@ -115,6 +176,7 @@ func TestPasscodeRequired_ImplementsError(t *testing.T) {
 }
 
 func TestGetAuthToken_CachedToken(t *testing.T) {
+	const unusedSource = "LOGNAV_UNUSED_CACHED_API_KEY"
 	instances := []config.ICLInstanceConfig{
 		{
 			Name: testInstanceDev,
@@ -122,6 +184,7 @@ func TestGetAuthToken_CachedToken(t *testing.T) {
 		},
 	}
 	am := newTestAccountManager(instances, "", "", "", "")
+	am.SetAPIKey(EnvProd, "synthetic-unused-api-key", unusedSource)
 	// Far-future expiry so cache hit is unambiguous once the predicate lands.
 	am.envs[EnvProd].accessTokens["acct123"] = tokenEntry{
 		token:     "cached-bearer-token",
@@ -135,6 +198,261 @@ func TestGetAuthToken_CachedToken(t *testing.T) {
 	if token != "cached-bearer-token" {
 		t.Errorf("token = %q, want cached-bearer-token", token)
 	}
+}
+
+func TestGetAuthToken_OnePasswordFailuresDoNotUseUnusedEnvironmentSource(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
+	const unusedSource = "LOGNAV_UNUSED_ONEPASSWORD_API_KEY"
+
+	t.Run("lookup failure", func(t *testing.T) {
+		lookupErr := errors.New("1Password unavailable")
+		original := readOnePasswordRef
+		t.Cleanup(func() { readOnePasswordRef = original })
+		readOnePasswordRef = func(context.Context, string) (string, error) {
+			return "", lookupErr
+		}
+
+		am := testAccountManager("", "op://vault/item/field", "", "")
+		am.SetAPIKey(EnvProd, "", unusedSource)
+
+		_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
+		require.Error(t, err)
+		require.ErrorIs(t, err, lookupErr)
+		require.ErrorContains(t, err, "1Password lookup failed")
+		assert.NotContains(t, err.Error(), unusedSource)
+	})
+
+	t.Run("token exchange failure", func(t *testing.T) {
+		const onePasswordKey = "synthetic-onepassword-key"
+		original := readOnePasswordRef
+		t.Cleanup(func() { readOnePasswordRef = original })
+		readOnePasswordRef = func(context.Context, string) (string, error) {
+			return onePasswordKey, nil
+		}
+		srv := newIAMStubServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`)
+		})
+
+		am := testAccountManager("", "op://vault/item/field", "", "")
+		am.SetOIDCForTest(EnvProd, srv.URL)
+		am.SetAPIKey(EnvProd, "", unusedSource)
+
+		_, err := am.GetAuthTokenNoPasscode(t.Context(), testCRN())
+		require.Error(t, err)
+		require.ErrorContains(t, err, "1Password API key token exchange failed")
+		assert.NotContains(t, err.Error(), unusedSource)
+		assert.NotContains(t, err.Error(), onePasswordKey)
+		var iamErr *IAMError
+		require.ErrorAs(t, err, &iamErr)
+		assert.Equal(t, "BXNIM0401E", iamErr.Code)
+	})
+}
+
+func TestAuthenticateEnvironment_ReportsOnePasswordMethod(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
+	const onePasswordKey = "synthetic-login-onepassword-key"
+	original := readOnePasswordRef
+	t.Cleanup(func() { readOnePasswordRef = original })
+	readOnePasswordRef = func(context.Context, string) (string, error) {
+		return onePasswordKey, nil
+	}
+	srv := newIAMStubServer(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, onePasswordKey, r.Form.Get("apikey"))
+		_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"refresh","expires_in":3600}`)
+	})
+	am := testAccountManager("", "op://vault/item/field", "", "")
+	am.SetOIDCForTest(EnvProd, srv.URL)
+
+	method, err := am.AuthenticateEnvironment(t.Context(), EnvProd)
+	require.NoError(t, err)
+	assert.Equal(t, AuthenticationMethodOnePassword, method)
+}
+
+func TestAuthenticateEnvironmentWithCredentialMode_UsesSelectedSource(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
+	const (
+		configuredKey  = "synthetic-configured-key"
+		environmentKey = "synthetic-environment-key"
+		onePasswordKey = "synthetic-onepassword-key"
+		refreshToken   = "synthetic-refresh-token"
+	)
+	original := readOnePasswordRef
+	t.Cleanup(func() { readOnePasswordRef = original })
+	readOnePasswordRef = func(context.Context, string) (string, error) {
+		return onePasswordKey, nil
+	}
+
+	for _, tt := range []struct {
+		mode       CredentialMode
+		method     AuthenticationMethod
+		grant, key string
+		setup      func(*AccountManager)
+	}{
+		{mode: CredentialModeRefresh, method: AuthenticationMethodRefreshToken, grant: "refresh_token"},
+		{mode: CredentialModeEnv, method: AuthenticationMethodEnvironmentAPIKey, grant: "urn:ibm:params:oauth:grant-type:apikey", key: environmentKey, setup: func(am *AccountManager) {
+			am.SetAPIKey(EnvProd, environmentKey, "LOGNAV_TEST_API_KEY")
+		}},
+		{mode: CredentialModeAPIKey, method: AuthenticationMethodConfiguredAPIKey, grant: "urn:ibm:params:oauth:grant-type:apikey", key: configuredKey},
+		{mode: CredentialModeOnePassword, method: AuthenticationMethodOnePassword, grant: "urn:ibm:params:oauth:grant-type:apikey", key: onePasswordKey},
+	} {
+		t.Run(string(tt.mode), func(t *testing.T) {
+			var grants, keys []string
+			srv := newIAMStubServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if !assert.NoError(t, r.ParseForm()) {
+					return
+				}
+				grants = append(grants, r.Form.Get("grant_type"))
+				keys = append(keys, r.Form.Get("apikey"))
+				_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"rotated-refresh","expires_in":3600}`)
+			})
+			am := testAccountManager(configuredKey, "op://vault/item/field", "", "")
+			am.SetOIDCForTest(EnvProd, srv.URL)
+			am.SetRefreshTokens(map[Environment]string{EnvProd: refreshToken})
+			if tt.setup != nil {
+				tt.setup(am)
+			}
+
+			method, err := am.AuthenticateEnvironmentWithCredentialMode(t.Context(), EnvProd, tt.mode)
+			require.NoError(t, err)
+			assert.Equal(t, tt.method, method)
+			assert.Equal(t, []string{tt.grant}, grants)
+			assert.Equal(t, []string{tt.key}, keys)
+		})
+	}
+}
+
+func TestAuthenticateEnvironmentWithCredentialMode_PasscodeBypassesCredentials(t *testing.T) {
+	am := testAccountManager("synthetic-configured-key", "op://vault/item/field", "", "")
+	am.SetRefreshTokens(map[Environment]string{EnvProd: "synthetic-refresh-token"})
+	am.envs[EnvProd].accessTokens[""] = tokenEntry{
+		token:     "synthetic-cached-token",
+		expiresAt: time.Now().Add(time.Hour),
+	}
+	am.envs[EnvProd].oidcConfig = &oidcConfig{PasscodeEndpoint: testPasscodeURLFixture}
+
+	method, err := am.AuthenticateEnvironmentWithCredentialMode(t.Context(), EnvProd, CredentialModePasscode)
+	var required *PasscodeRequired
+	require.ErrorAs(t, err, &required)
+	assert.Empty(t, method)
+	assert.Equal(t, testPasscodeURLFixture, required.GetPasscodeURL())
+}
+
+func TestAuthenticateEnvironmentWithCredentialMode_DoesNotFallback(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
+	t.Run("unavailable credential", func(t *testing.T) {
+		for _, tt := range []struct {
+			mode  CredentialMode
+			setup func(*AccountManager)
+		}{
+			{mode: CredentialModeRefresh},
+			{mode: CredentialModeEnv},
+			{mode: CredentialModeAPIKey, setup: func(am *AccountManager) {
+				am.SetAPIKey(EnvProd, "synthetic-environment-key", "LOGNAV_TEST_API_KEY")
+			}},
+			{mode: CredentialModeOnePassword, setup: func(am *AccountManager) {
+				am.envs[EnvProd].opRef = ""
+			}},
+		} {
+			t.Run(string(tt.mode), func(t *testing.T) {
+				am := testAccountManager("synthetic-configured-key", "op://vault/item/field", "", "")
+				if tt.setup != nil {
+					tt.setup(am)
+				}
+
+				_, err := am.AuthenticateEnvironmentWithCredentialMode(t.Context(), EnvProd, tt.mode)
+				require.EqualError(t, err, "selected "+string(tt.mode)+" credential is not configured")
+			})
+		}
+	})
+
+	t.Run("rejected credential", func(t *testing.T) {
+		const onePasswordKey = "synthetic-onepassword-key"
+		original := readOnePasswordRef
+		t.Cleanup(func() { readOnePasswordRef = original })
+		readOnePasswordRef = func(context.Context, string) (string, error) {
+			return onePasswordKey, nil
+		}
+
+		for _, tt := range []struct {
+			mode       CredentialMode
+			grant, key string
+			setup      func(*AccountManager)
+		}{
+			{mode: CredentialModeRefresh, grant: "refresh_token", setup: func(am *AccountManager) {
+				am.SetRefreshTokens(map[Environment]string{EnvProd: "synthetic-refresh-token"})
+			}},
+			{mode: CredentialModeEnv, grant: "urn:ibm:params:oauth:grant-type:apikey", key: "synthetic-environment-key", setup: func(am *AccountManager) {
+				am.SetAPIKey(EnvProd, "synthetic-environment-key", "LOGNAV_TEST_API_KEY")
+			}},
+			{mode: CredentialModeAPIKey, grant: "urn:ibm:params:oauth:grant-type:apikey", key: "synthetic-configured-key"},
+			{mode: CredentialModeOnePassword, grant: "urn:ibm:params:oauth:grant-type:apikey", key: onePasswordKey},
+		} {
+			t.Run(string(tt.mode), func(t *testing.T) {
+				var grants, keys []string
+				srv := newIAMStubServer(t, func(w http.ResponseWriter, r *http.Request) {
+					if !assert.NoError(t, r.ParseForm()) {
+						return
+					}
+					grants = append(grants, r.Form.Get("grant_type"))
+					keys = append(keys, r.Form.Get("apikey"))
+					w.WriteHeader(http.StatusUnauthorized)
+					_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"credential rejected"}`)
+				})
+				am := testAccountManager("synthetic-configured-key", "op://vault/item/field", "", "")
+				am.SetOIDCForTest(EnvProd, srv.URL)
+				if tt.setup != nil {
+					tt.setup(am)
+				}
+
+				_, err := am.AuthenticateEnvironmentWithCredentialMode(t.Context(), EnvProd, tt.mode)
+				require.EqualError(t, err, "selected "+string(tt.mode)+" credential was rejected")
+				assert.Equal(t, []string{tt.grant}, grants)
+				assert.Equal(t, []string{tt.key}, keys)
+			})
+		}
+	})
+}
+
+func TestGetAuthToken_CachedOnePasswordAPIKeyDoesNotUseUnusedEnvironmentSource(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
+	const (
+		unusedSource   = "LOGNAV_UNUSED_CACHED_ONEPASSWORD_API_KEY"
+		onePasswordKey = "synthetic-cached-onepassword-key"
+	)
+	original := readOnePasswordRef
+	t.Cleanup(func() { readOnePasswordRef = original })
+	var opReads atomic.Int64
+	readOnePasswordRef = func(context.Context, string) (string, error) {
+		opReads.Add(1)
+		return onePasswordKey, nil
+	}
+
+	var requests int
+	srv := newIAMStubServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			_, _ = io.WriteString(w, `{"access_token":"first-token","expires_in":3600}`)
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`)
+	})
+	instances := []config.ICLInstanceConfig{
+		{Name: "a", CRN: config.MustCRNFromString("crn:v1:bluemix:public:logs:us-south:a/acctA:instA::")},
+		{Name: "b", CRN: config.MustCRNFromString("crn:v1:bluemix:public:logs:us-south:a/acctB:instB::")},
+	}
+	am := newTestAccountManager(instances, "", "op://vault/item/field", "", "")
+	am.SetOIDCForTest(EnvProd, srv.URL)
+	am.SetAPIKey(EnvProd, "", unusedSource)
+
+	_, err := am.GetAuthTokenNoPasscode(t.Context(), instances[0].CRN)
+	require.NoError(t, err)
+	_, err = am.GetAuthTokenNoPasscode(t.Context(), instances[1].CRN)
+	require.Error(t, err)
+	assert.Equal(t, int64(1), opReads.Load(), "the second account must reuse the cached 1Password key")
+	require.ErrorContains(t, err, "API key token exchange failed")
+	assert.NotContains(t, err.Error(), unusedSource)
+	assert.NotContains(t, err.Error(), onePasswordKey)
+	var iamErr *IAMError
+	require.ErrorAs(t, err, &iamErr)
+	assert.Equal(t, "BXNIM0401E", iamErr.Code)
 }
 
 func TestGetAuthToken_PrefersPersistedRefreshToken(t *testing.T) { //nolint:paralleltest // replaces the package 1Password seam
@@ -685,6 +1003,7 @@ func TestGetAuthToken_RefreshGrant_TransportError_PreservesRefreshToken(t *testi
 		PasscodeEndpoint: "https://example.invalid/passcode",
 	}
 	am.envs[EnvProd].refreshToken = "valid-refresh"
+	am.SetAPIKey(EnvProd, "synthetic-unused-api-key", "LOGNAV_UNUSED_REFRESH_API_KEY")
 
 	_, err := am.GetAuthToken(t.Context(), testCRN())
 	if err == nil {
@@ -697,6 +1016,7 @@ func TestGetAuthToken_RefreshGrant_TransportError_PreservesRefreshToken(t *testi
 	if am.envs[EnvProd].refreshToken != "valid-refresh" {
 		t.Errorf("refresh token CLEARED on transport error: %q", am.envs[EnvProd].refreshToken)
 	}
+	assert.NotContains(t, err.Error(), "LOGNAV_UNUSED_REFRESH_API_KEY", "refresh failures must not blame an unused API key")
 }
 
 func TestGetAuthToken_CacheHitPredicate(t *testing.T) {

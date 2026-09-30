@@ -38,8 +38,10 @@ An `AccountManager` resolves credentials independently for every configured
 `icl.environments` CName. Within an environment it derives the account from the
 full CRN. A usable cached access token for that account is returned first.
 Otherwise, a persisted refresh token is tried before the configured API key and
-1Password API-key reference. Production `bluemix` alone may be overridden by
-`IC_API_KEY`.
+1Password API-key reference. Every environment defaults `apiKeyEnvVar` to
+`IC_API_KEY`; a custom selector replaces that variable, an explicit empty
+selector disables lookup, and an unset or empty selected variable leaves
+configured credentials available.
 
 Refresh exchanges omit the optional IAM `account` form field, matching IBM's
 SDK refresh flow; the resulting access token is still cached under the target
@@ -48,9 +50,13 @@ process, so a successful environment lookup is reused. A rejected IAM refresh
 grant clears that refresh token and continues through the configured credential sources;
 transport and parse failures return an error and leave it available for a later
 retry. A configured credential lookup or exchange failure is returned
-immediately. The TUI may request a passcode when no noninteractive credential
-remains. `GetAuthTokenNoPasscode`, used by headless callers, instead stops with
-`HeadlessAuthRequiredError` when passcode authentication would be needed.
+immediately. The TUI and `lognav login` may request a passcode when no
+noninteractive credential remains. Login resolves the same chain without an
+instance CRN and saves any resulting refresh token. Its optional credential
+mode can instead select only a refresh token, environment API key, configured
+API key, 1Password reference, or passcode flow, without fallback. `GetAuthTokenNoPasscode`,
+used by headless query callers, instead stops with `HeadlessAuthRequiredError`
+when passcode authentication would be needed.
 
 Refresh tokens are a plaintext JSON map by environment in `session.json`.
 `SessionPath` only resolves its location. `SaveSession` creates or repairs the

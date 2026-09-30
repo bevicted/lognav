@@ -11,6 +11,7 @@ import (
 	"github.com/bevicted/lognav/internal/ui/components/list"
 	"github.com/bevicted/lognav/internal/ui/components/queryeditor/highlight"
 	"github.com/bevicted/lognav/internal/ui/status"
+	"github.com/rivo/uniseg"
 )
 
 // loadPreview reads the state frame and renders a summary for preview display.
@@ -49,9 +50,7 @@ func preview(bundle deps.Bundle, s *snapshot.Snapshot) ([][]list.Segment, error)
 	var longestName, longestTime int
 	times := make([]string, len(instances))
 	for i, inst := range instances {
-		if len(names[i]) > longestName {
-			longestName = len(names[i])
-		}
+		longestName = max(longestName, uniseg.StringWidth(names[i]))
 		d := time.Duration(inst.LastUpdateTimeMicro-inst.StartTimeMicro) * time.Microsecond
 		times[i] = instancepicker.FormatElapsed(bundle.Config.Style.ElapsedFetchTimeFormat, d)
 		if len(times[i]) > longestTime {

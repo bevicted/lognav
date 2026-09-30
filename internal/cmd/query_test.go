@@ -1273,14 +1273,92 @@ func TestQuery_NoCredentialsIsUnavailableWithoutPasscode(t *testing.T) { //nolin
 	assert.Contains(t, stderr, "querying test")
 }
 
+func TestQueryEnvironments_UsesDefaultVariableForEveryConfiguredEnvironment(t *testing.T) { //nolint:paralleltest // mutates command seams and XDG environment
+	setQueryTestXDG(t)
+	cfg := queryTestConfig()
+	cfg.ICL.Instances = append(cfg.ICL.Instances, config.ICLInstanceConfig{
+		Name: "stage", CRN: config.MustCRNFromString("crn:v1:test-cloud:public:logs:us-south:a/account:instance::"),
+	})
+	t.Setenv("IC_API_KEY", "default-environment-key")
+
+	var mu sync.Mutex
+	var gotAPIKeys []string
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		mu.Lock()
+		gotAPIKeys = append(gotAPIKeys, r.Form.Get("apikey"))
+		mu.Unlock()
+		_, _ = io.WriteString(w, `{"access_token":"token","refresh_token":"rotated-refresh","expires_in":3600}`)
+	}))
+	defer iam.Close()
+
+	oldStream, oldManager := queryStream, newQueryAccountManager
+	defer func() { queryStream, newQueryAccountManager = oldStream, oldManager }()
+	queryStream = func(_ context.Context, _, _, _ string, _ uint32, cb icl.QueryCallback) error {
+		cb.OnClose()
+		return nil
+	}
+	newQueryAccountManager = func(environments map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
+		manager := icl.NewAccountManager(environments)
+		manager.SetOIDCForTest(icl.EnvProd, iam.URL)
+		manager.SetOIDCForTest(icl.Environment("test-cloud"), iam.URL)
+		return manager
+	}
+
+	stdout, _, err := runQueryCommand(t, cfg, "", "query", "--all")
+	require.NoError(t, err)
+	assert.Empty(t, stdout)
+	assert.ElementsMatch(t, []string{"default-environment-key", "default-environment-key"}, gotAPIKeys)
+	assert.Empty(t, cfg.ICL.Environments["test-cloud"].APIKey, "headless overrides must not mutate config")
+}
+
+func TestQuery_EnvironmentAPIKeyFailureIdentifiesActualSource(t *testing.T) { //nolint:paralleltest // mutates command seams and XDG environment
+	const (
+		source = "LOGNAV_QUERY_TEST_API_KEY"
+		key    = "synthetic-query-environment-key"
+	)
+	setQueryTestXDG(t)
+	cfg := queryTestConfig()
+	environment := cfg.ICL.Environments["bluemix"]
+	environment.APIKeyEnvVar = source
+	cfg.ICL.Environments["bluemix"] = environment
+	t.Setenv(source, key)
+
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, key, r.Form.Get("apikey"))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`)
+	}))
+	defer iam.Close()
+
+	oldManager := newQueryAccountManager
+	defer func() { newQueryAccountManager = oldManager }()
+	newQueryAccountManager = func(environments map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
+		manager := icl.NewAccountManager(environments)
+		manager.SetOIDCForTest(icl.EnvProd, iam.URL)
+		return manager
+	}
+
+	_, stderr, err := runQueryCommand(t, cfg, "", "query", "--instance", "test")
+	require.Error(t, err)
+	assert.Equal(t, ExitUnavailable, ExitCode(err))
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_QUERY_TEST_API_KEY" token exchange failed`)
+	assert.Contains(t, err.Error(), "BXNIM0401E: API key rejected")
+	assert.NotContains(t, err.Error(), key)
+	assert.Contains(t, stderr, `API key from environment variable "LOGNAV_QUERY_TEST_API_KEY" token exchange failed`)
+	assert.NotContains(t, stderr, key)
+}
+
 func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //nolint:paralleltest // mutates command seams, auth executable, and XDG environment
 	tests := []struct {
-		name        string
-		configure   func(t *testing.T, cfg *config.Config)
-		wantGrant   string
-		wantAPIKey  string
-		wantSession map[icl.Environment]string
-		wantExit    int
+		name          string
+		configure     func(t *testing.T, cfg *config.Config)
+		queryInstance string
+		wantGrant     string
+		wantAPIKey    string
+		wantSession   map[icl.Environment]string
+		wantExit      int
 	}{
 		{
 			name:       "configured API key",
@@ -1291,7 +1369,7 @@ func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //noli
 			},
 		},
 		{
-			name: "IBM Cloud environment API key takes precedence over config",
+			name: "default environment API key takes precedence over config",
 			configure: func(t *testing.T, _ *config.Config) {
 				t.Setenv("IC_API_KEY", "standard-environment-key")
 			},
@@ -1299,6 +1377,85 @@ func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //noli
 			wantAPIKey: "standard-environment-key",
 			wantSession: map[icl.Environment]string{
 				icl.EnvProd: "rotated-refresh",
+			},
+		},
+		{
+			name: "custom environment variable replaces IC_API_KEY",
+			configure: func(t *testing.T, cfg *config.Config) {
+				environment := cfg.ICL.Environments["bluemix"]
+				environment.APIKeyEnvVar = "LOGNAV_CUSTOM_API_KEY"
+				cfg.ICL.Environments["bluemix"] = environment
+				t.Setenv("IC_API_KEY", "wrong-default-key")
+				t.Setenv("LOGNAV_CUSTOM_API_KEY", "custom-environment-key")
+			},
+			wantGrant:  "urn:ibm:params:oauth:grant-type:apikey",
+			wantAPIKey: "custom-environment-key",
+			wantSession: map[icl.Environment]string{
+				icl.EnvProd: "rotated-refresh",
+			},
+		},
+		{
+			name: "empty selector ignores environment variables",
+			configure: func(t *testing.T, cfg *config.Config) {
+				environment := cfg.ICL.Environments["bluemix"]
+				environment.APIKeyEnvVar = ""
+				cfg.ICL.Environments["bluemix"] = environment
+				t.Setenv("IC_API_KEY", "wrong-default-key")
+			},
+			wantGrant:  "urn:ibm:params:oauth:grant-type:apikey",
+			wantAPIKey: "test-key",
+			wantSession: map[icl.Environment]string{
+				icl.EnvProd: "rotated-refresh",
+			},
+		},
+		{
+			name: "unset custom variable keeps configured API key",
+			configure: func(t *testing.T, cfg *config.Config) {
+				environment := cfg.ICL.Environments["bluemix"]
+				environment.APIKeyEnvVar = "LOGNAV_UNSET_API_KEY"
+				cfg.ICL.Environments["bluemix"] = environment
+				t.Setenv("IC_API_KEY", "wrong-default-key")
+			},
+			wantGrant:  "urn:ibm:params:oauth:grant-type:apikey",
+			wantAPIKey: "test-key",
+			wantSession: map[icl.Environment]string{
+				icl.EnvProd: "rotated-refresh",
+			},
+		},
+		{
+			name: "empty custom variable keeps configured API key",
+			configure: func(t *testing.T, cfg *config.Config) {
+				environment := cfg.ICL.Environments["bluemix"]
+				environment.APIKeyEnvVar = "LOGNAV_EMPTY_API_KEY"
+				cfg.ICL.Environments["bluemix"] = environment
+				t.Setenv("IC_API_KEY", "wrong-default-key")
+				t.Setenv("LOGNAV_EMPTY_API_KEY", "")
+			},
+			wantGrant:  "urn:ibm:params:oauth:grant-type:apikey",
+			wantAPIKey: "test-key",
+			wantSession: map[icl.Environment]string{
+				icl.EnvProd: "rotated-refresh",
+			},
+		},
+		// #nosec G101 -- synthetic selector/key values verify the local IAM fixture.
+		{
+			name:          "non-production environment uses selected variable",
+			queryInstance: "stage",
+			configure: func(t *testing.T, cfg *config.Config) {
+				environment := cfg.ICL.Environments["test-cloud"]
+				environment.APIKey = "stage-configured-key"
+				environment.APIKeyEnvVar = "LOGNAV_STAGE_API_KEY"
+				cfg.ICL.Environments["test-cloud"] = environment
+				cfg.ICL.Instances = append(cfg.ICL.Instances, config.ICLInstanceConfig{
+					Name: "stage", CRN: config.MustCRNFromString("crn:v1:test-cloud:public:logs:us-south:a/account:instance::"),
+				})
+				t.Setenv("IC_API_KEY", "wrong-default-key")
+				t.Setenv("LOGNAV_STAGE_API_KEY", "stage-environment-key")
+			},
+			wantGrant:  "urn:ibm:params:oauth:grant-type:apikey",
+			wantAPIKey: "stage-environment-key",
+			wantSession: map[icl.Environment]string{
+				icl.Environment("test-cloud"): "rotated-refresh",
 			},
 		},
 		{
@@ -1367,6 +1524,10 @@ func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //noli
 			if tt.configure != nil {
 				tt.configure(t, cfg)
 			}
+			configuredKeys := make(map[string]string, len(cfg.ICL.Environments))
+			for cname, environment := range cfg.ICL.Environments {
+				configuredKeys[cname] = environment.APIKey
+			}
 			var gotGrant, gotAPIKey string
 			iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.NoError(t, r.ParseForm())
@@ -1389,10 +1550,15 @@ func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //noli
 			newQueryAccountManager = func(environments map[string]config.ICLEnvironmentConfig) *icl.AccountManager {
 				manager := icl.NewAccountManager(environments)
 				manager.SetOIDCForTest(icl.EnvProd, iam.URL)
+				manager.SetOIDCForTest(icl.Environment("test-cloud"), iam.URL)
 				return manager
 			}
 
-			stdout, _, err := runQueryCommand(t, cfg, "", "query", "--instance", "test")
+			instance := tt.queryInstance
+			if instance == "" {
+				instance = "test"
+			}
+			stdout, _, err := runQueryCommand(t, cfg, "", "query", "--instance", instance)
 			assert.Empty(t, stdout)
 			if tt.wantExit != 0 {
 				require.Error(t, err)
@@ -1403,6 +1569,9 @@ func TestQuery_AuthenticationSourcesAndRefreshPersistence(t *testing.T) { //noli
 			}
 			assert.Equal(t, tt.wantGrant, gotGrant)
 			assert.Equal(t, tt.wantAPIKey, gotAPIKey)
+			for cname, wantKey := range configuredKeys {
+				assert.Equal(t, wantKey, cfg.ICL.Environments[cname].APIKey, "headless overrides must not mutate config")
+			}
 			path, pathErr := icl.SessionPath()
 			require.NoError(t, pathErr)
 			session, loadErr := icl.LoadSession(path)
@@ -1563,9 +1732,10 @@ func setQueryEnvironmentCredentials(cfg *config.Config, cname, key, opRef string
 
 func queryTestConfig() *config.Config {
 	cfg := config.New()
+	// #nosec G101 -- synthetic selector/key values are test fixtures.
 	cfg.ICL.Environments = map[string]config.ICLEnvironmentConfig{
-		"bluemix":    {IAMURL: "https://iam.example/identity", APIKey: "test-key"},
-		"test-cloud": {IAMURL: "https://iam.example/test"},
+		"bluemix":    {IAMURL: "https://iam.example/identity", APIKey: "test-key", APIKeyEnvVar: "IC_API_KEY"},
+		"test-cloud": {IAMURL: "https://iam.example/test", APIKeyEnvVar: "IC_API_KEY"},
 	}
 	cfg.ICL.Instances = []config.ICLInstanceConfig{{
 		Name: "test", CRN: config.MustCRNFromString("crn:v1:bluemix:public:logs:us-south:a/account:instance::"),

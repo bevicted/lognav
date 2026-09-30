@@ -2,6 +2,9 @@ package ui
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -9,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/bevicted/lognav/internal/config"
 	"github.com/bevicted/lognav/internal/deps/depstest"
 	"github.com/bevicted/lognav/internal/snapshot"
 	"github.com/bevicted/lognav/internal/snapshot/snapshottest"
@@ -87,6 +91,96 @@ func TestModel_ApplyEnvAPIKey(t *testing.T) {
 	m.ApplyEnv([]string{"IC_API_KEY=environment-key"})
 
 	assert.Equal(t, "environment-key", bundle.Config.ICL.Environments["bluemix"].APIKey)
+}
+
+func TestModel_ApplyEnvAPIKeySelectors(t *testing.T) {
+	var iamURL string
+	var keys []string
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"token_endpoint":"`+iamURL+`"}`)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parse token request: %v", err)
+			return
+		}
+		keys = append(keys, r.Form.Get("apikey"))
+		_, _ = io.WriteString(w, `{"access_token":"token","expires_in":3600}`)
+	}))
+	iamURL = iam.URL
+	t.Cleanup(iam.Close)
+
+	bundle := depstest.NewTest(t)
+	// #nosec G101 -- synthetic selector/key values verify the local IAM fixture.
+	bundle.Config.ICL.Environments = map[string]config.ICLEnvironmentConfig{
+		"default-one": {IAMURL: iam.URL, APIKeyEnvVar: "IC_API_KEY"},
+		"custom":      {IAMURL: iam.URL, APIKeyEnvVar: "LOGNAV_CUSTOM_API_KEY"},
+		"disabled":    {IAMURL: iam.URL, APIKey: "configured-disabled-key", APIKeyEnvVar: ""},
+		"unset":       {IAMURL: iam.URL, APIKey: "configured-unset-key", APIKeyEnvVar: "LOGNAV_UNSET_API_KEY"},
+	}
+	m, err := New(t.Context(), bundle)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, m.Close()) })
+
+	m.ApplyEnv([]string{
+		"IC_API_KEY=default-environment-key",
+		"LOGNAV_CUSTOM_API_KEY=custom-environment-key",
+	})
+
+	for index, tc := range []struct {
+		cname string
+		key   string
+	}{
+		{cname: "default-one", key: "default-environment-key"},
+		{cname: "custom", key: "custom-environment-key"},
+		{cname: "disabled", key: "configured-disabled-key"},
+		{cname: "unset", key: "configured-unset-key"},
+	} {
+		crn := config.MustCRNFromString("crn:v1:" + tc.cname + ":public:logs:us-south:a/" + tc.cname + ":instance::")
+		token, _, resolveErr := m.instances.ResolveInstanceToken(t.Context(), crn.String())
+		require.NoError(t, resolveErr)
+		assert.Equal(t, "token", token)
+		require.Len(t, keys, index+1)
+		assert.Equal(t, tc.key, keys[index])
+		assert.Equal(t, tc.key, bundle.Config.ICL.Environments[tc.cname].APIKey)
+	}
+}
+
+func TestModel_ApplyEnvForwardsCredentialSourceToAuthError(t *testing.T) {
+	const (
+		source = "LOGNAV_UI_TEST_API_KEY"
+		key    = "synthetic-ui-environment-key"
+	)
+	var iamURL string
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"token_endpoint":"`+iamURL+`"}`)
+			return
+		}
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, key, r.Form.Get("apikey"))
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`)
+	}))
+	iamURL = iam.URL
+	t.Cleanup(iam.Close)
+
+	bundle := depstest.NewTest(t)
+	bundle.Config.ICL.Environments = map[string]config.ICLEnvironmentConfig{
+		"custom": {IAMURL: iam.URL, APIKeyEnvVar: source},
+	}
+	m, err := New(t.Context(), bundle)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, m.Close()) })
+
+	m.ApplyEnv([]string{source + "=" + key})
+	crn := config.MustCRNFromString("crn:v1:custom:public:logs:us-south:a/account:instance::")
+	_, _, err = m.instances.ResolveInstanceToken(t.Context(), crn.String())
+	require.Error(t, err)
+	require.ErrorContains(t, err, `API key from environment variable "LOGNAV_UI_TEST_API_KEY" token exchange failed`)
+	assert.Contains(t, err.Error(), "BXNIM0401E: API key rejected")
+	assert.NotContains(t, err.Error(), key)
 }
 
 func TestModel_DrawTo_ReturnsNilOnEmptySize(t *testing.T) {

@@ -70,3 +70,25 @@ func TestInstanceRowSegments_GraphemePadding(t *testing.T) {
 	assert.Equal(t, 8, uniseg.StringWidth(segs[0].Text),
 		"padded label must occupy exactly labelWidth display cells")
 }
+
+func TestLongestInstanceName_UsesDisplayWidth(t *testing.T) {
+	t.Parallel()
+	instances := Instances{
+		{Name: "🚀 prestage"},
+		{Name: "🇮🇳 in-mum"},
+	}
+
+	assert.Equal(t, 11, longestInstanceName(instances))
+}
+
+func TestInstanceRowSegments_AlignsMixedEmojiNames(t *testing.T) {
+	t.Parallel()
+	const nameWidth = 11
+	rocket := InstanceRowSegments("OFF", uv.Style{}, 4, "🚀 prestage", nameWidth, 0, 5, "0.00s")
+	flag := InstanceRowSegments("OFF", uv.Style{}, 4, "🇮🇳 in-mum", nameWidth, 0, 5, "0.00s")
+
+	require.Len(t, rocket, 2)
+	require.Len(t, flag, 2)
+	assert.Equal(t, uniseg.StringWidth(rocket[1].Text), uniseg.StringWidth(flag[1].Text),
+		"count and timer columns must align for emoji with different rune and byte lengths")
+}

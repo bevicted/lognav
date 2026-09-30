@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,7 +23,10 @@ import (
 	"github.com/bevicted/lognav/internal/icl"
 	"github.com/bevicted/lognav/internal/snapshot"
 	"github.com/bevicted/lognav/internal/snapshot/snapshottest"
+	"github.com/bevicted/lognav/internal/ui/components/component"
 	"github.com/bevicted/lognav/internal/ui/components/list"
+	"github.com/bevicted/lognav/internal/ui/components/logviewer"
+	"github.com/bevicted/lognav/internal/ui/keys/keystest"
 	"github.com/bevicted/lognav/internal/ui/msgs"
 	"github.com/bevicted/lognav/internal/ui/status"
 )
@@ -997,15 +1001,232 @@ func TestMaybeFinalizeFetch_NoSaveWhenEmpty(t *testing.T) {
 func TestOnEnvCredFailed_DoesNotTouchOtherEnv(t *testing.T) {
 	t.Parallel()
 	prod := newTestInstanceEnv(t, "p", icl.EnvProd)
+	deselected := newTestInstanceEnv(t, "d", icl.EnvProd)
+	completed := newTestInstanceEnv(t, "c", icl.EnvProd)
 	stage := newTestInstanceEnv(t, "s", icl.Environment("test-cloud"))
-	prod.state, stage.state = status.AuthInProgress, status.AuthInProgress
+	prod.state = status.AuthInProgress
+	deselected.state = status.Disabled
+	completed.state = status.Success
+	stage.state = status.AuthInProgress
+	deselected.Store.SetMessage("deselected failure")
+	completed.Store.SetMessage("completed failure")
+	stage.Store.SetMessage("unrelated failure")
 	m := New(t.Context(), depstest.NewTest(t))
 	m.bundle = depstest.NewTest(t)
 	m.poster = &fakePoster{}
-	m.instances = Instances{prod, stage}
+	m.instances = Instances{prod, deselected, completed, stage}
 	m.OnEnvCredFailed(EnvCredFailedMsg{Env: icl.EnvProd, Err: errors.New("boom")})
 	assert.Equal(t, status.Error, prod.state, "prod errored")
+	assert.Equal(t, "boom", prod.Store.GetMessage(), "prod retains the auth failure for the zero-log viewer")
+	assert.Equal(t, status.Disabled, deselected.state, "deselected member remains untouched")
+	assert.Equal(t, "deselected failure", deselected.Store.GetMessage())
+	assert.Equal(t, status.Success, completed.state, "completed member remains untouched")
+	assert.Equal(t, "completed failure", completed.Store.GetMessage())
 	assert.Equal(t, status.AuthInProgress, stage.state, "staging untouched -> no hang")
+	assert.Equal(t, "unrelated failure", stage.Store.GetMessage(), "staging message remains untouched")
+}
+
+func TestResolverEnvCredentialFailureStoresSourceAndSuccessfulRetryClearsIt(t *testing.T) {
+	const (
+		source = "LOGNAV_PICKER_TEST_API_KEY"
+		key    = "synthetic-picker-environment-key"
+	)
+	reject := true
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.NoError(t, r.ParseForm())
+		assert.Equal(t, key, r.Form.Get("apikey"))
+		if reject {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"errorCode":"BXNIM0401E","errorMessage":"API key rejected"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"synthetic-access-token","expires_in":3600}`))
+	}))
+	defer iam.Close()
+
+	inst := newTestInstanceEnv(t, "prod", icl.EnvProd)
+	inst.Enable()
+	insts := Instances{inst}
+	am := testAccountManagerWithAPIKey("configured-key")
+	am.SetOIDCForTest(icl.EnvProd, iam.URL)
+	am.SetAPIKey(icl.EnvProd, key, source)
+	poster := &fakePoster{}
+	insts.ResolveTokens(t.Context(), 0, am, "source logs", poster)
+
+	events := poster.events()
+	require.Len(t, events, 1)
+	failure, ok := events[0].(EnvCredFailedMsg)
+	require.True(t, ok)
+	require.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_TEST_API_KEY" token exchange failed`)
+	assert.Contains(t, failure.Err.Error(), "BXNIM0401E: API key rejected")
+	assert.NotContains(t, failure.Err.Error(), key)
+
+	m := New(t.Context(), depstest.NewTest(t))
+	m.instances = insts
+	m.OnEnvCredFailed(failure)
+	assert.Equal(t, status.Error, inst.state)
+	assert.Equal(t, failure.Err.Error(), inst.Store.GetMessage())
+
+	reject = false
+	inst.Enable()
+	insts.ResolveTokens(t.Context(), 0, am, "source logs", poster)
+	assert.Empty(t, inst.Store.GetMessage(), "retry must clear the annotated authentication error")
+	events = poster.events()
+	require.Len(t, events, 2)
+	_, ok = events[1].(MemberAuthResolvedMsg)
+	assert.True(t, ok, "successful retry must resolve the member")
+}
+
+func TestResolverEnvCredentialDiscoveryFailureStoresSource(t *testing.T) {
+	const (
+		source = "LOGNAV_PICKER_DISCOVERY_API_KEY"
+		key    = "synthetic-picker-discovery-key"
+	)
+	iam := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/.well-known/openid-configuration", r.URL.Path)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("local discovery failed"))
+	}))
+	defer iam.Close()
+
+	environments := config.New().ICL.Environments
+	production := environments[string(icl.EnvProd)]
+	production.IAMURL = iam.URL
+	production.APIKey = ""
+	environments[string(icl.EnvProd)] = production
+	am := icl.NewAccountManager(environments)
+	am.SetAPIKey(icl.EnvProd, key, source)
+
+	inst := newTestInstanceEnv(t, "prod", icl.EnvProd)
+	inst.Enable()
+	insts := Instances{inst}
+	poster := &fakePoster{}
+	insts.ResolveTokens(t.Context(), 0, am, "source logs", poster)
+	events := poster.events()
+	require.Len(t, events, 1)
+	failure, ok := events[0].(EnvCredFailedMsg)
+	require.True(t, ok)
+	require.ErrorContains(t, failure.Err, `API key from environment variable "LOGNAV_PICKER_DISCOVERY_API_KEY" token exchange failed`)
+	require.ErrorContains(t, failure.Err, "query OIDC config: http 503: local discovery failed")
+	assert.NotContains(t, failure.Err.Error(), key)
+
+	m := New(t.Context(), depstest.NewTest(t))
+	m.instances = insts
+	m.OnEnvCredFailed(failure)
+	assert.Equal(t, failure.Err.Error(), inst.Store.GetMessage())
+}
+
+func TestOnEnvCredFailed_StaleGenerationKeepsStateAndMessage(t *testing.T) {
+	t.Parallel()
+	prod := newTestInstanceEnv(t, "p", icl.EnvProd)
+	prod.StartAuthTimer()
+	prod.Store.SetMessage("current failure")
+	m := New(t.Context(), depstest.NewTest(t))
+	m.authGeneration = 1
+	m.instances = Instances{prod}
+
+	m.OnEnvCredFailed(EnvCredFailedMsg{Env: icl.EnvProd, Err: errors.New("stale failure"), AuthGeneration: 0})
+
+	assert.Equal(t, status.AuthInProgress, prod.state)
+	assert.Equal(t, "current failure", prod.Store.GetMessage())
+}
+
+func TestAuthFailureHandlers_RetainMessages(t *testing.T) {
+	t.Parallel()
+
+	t.Run("member", func(t *testing.T) {
+		t.Parallel()
+		target := newTestInstance(t, "target")
+		other := newTestInstance(t, "other")
+		target.StartAuthTimer()
+		other.Store.SetMessage("unrelated failure")
+		m := New(t.Context(), depstest.NewTest(t))
+		m.poster = &fakePoster{}
+		m.instances = Instances{target, other}
+
+		m.OnMemberAuthFailed(MemberAuthFailedMsg{CRN: target.CRN, Err: errors.New("member failure")})
+
+		assert.Equal(t, status.Error, target.state)
+		assert.Equal(t, "member failure", target.Store.GetMessage())
+		assert.Equal(t, "unrelated failure", other.Store.GetMessage())
+	})
+
+	t.Run("passcode", func(t *testing.T) {
+		t.Parallel()
+		prod := newTestInstanceEnv(t, "prod", icl.EnvProd)
+		stage := newTestInstanceEnv(t, "stage", icl.Environment("test-cloud"))
+		prod.StartAuthTimer()
+		stage.StartAuthTimer()
+		stage.Store.SetMessage("unrelated failure")
+		m := New(t.Context(), depstest.NewTest(t))
+		m.poster = &fakePoster{}
+		m.instances = Instances{prod, stage}
+
+		m.OnPasscodeError(PasscodeErrorMsg{Env: icl.EnvProd, Err: errors.New("passcode failure")})
+
+		assert.Equal(t, status.Error, prod.state)
+		assert.Equal(t, "passcode failure", prod.Store.GetMessage())
+		assert.Equal(t, status.AuthInProgress, stage.state)
+		assert.Equal(t, "unrelated failure", stage.Store.GetMessage())
+	})
+}
+
+func TestRetryFailedFetch_ClearsAuthFailureBeforeSuccessfulResolution(t *testing.T) {
+	t.Parallel()
+	inst := newTestInstanceEnv(t, "prod", icl.EnvProd)
+	inst.state = status.Error
+	inst.Store.SetMessage("previous authentication failure")
+	m := New(t.Context(), depstest.NewTest(t))
+	m.instances = Instances{inst}
+	m.authManager = authStubManager(t, nil, 1)
+	poster := &fakePoster{}
+	m.SetPoster(poster)
+
+	m.HandleKey(keystest.PressRuneUV(t, 'r'))
+
+	assert.Equal(t, status.AuthInProgress, inst.state)
+	assert.Empty(t, inst.Store.GetMessage(), "retry must clear the previous auth failure before re-authenticating")
+	events := poster.events()
+	require.Len(t, events, 1)
+	_, ok := events[0].(MemberAuthResolvedMsg)
+	assert.True(t, ok, "successful retry must resolve a fresh token, got %T", events[0])
+}
+
+func TestResolveEnvMembers_AuthFailureRendersCause(t *testing.T) {
+	t.Parallel()
+	prod := newTestInstanceEnv(t, "prod", icl.EnvProd)
+	prod.StartAuthTimer()
+	m := New(t.Context(), depstest.NewTest(t))
+	m.instances = Instances{prod}
+	poster := &fakePoster{}
+	m.SetPoster(poster)
+
+	am := authStubManager(t, nil, 0)
+	m.instances.resolveEnvMembers(t.Context(), m.authGeneration, am, icl.EnvProd, []string{prod.CRN}, "q", poster)
+	events := poster.events()
+	require.Len(t, events, 1)
+	failure, ok := events[0].(EnvCredFailedMsg)
+	require.True(t, ok, "expected EnvCredFailedMsg, got %T", events[0])
+
+	m.OnEnvCredFailed(failure)
+
+	viewer := logviewer.New(m.bundle)
+	viewer.SetStore(prod.Store)
+	viewer.SetRect(component.Rect{W: 120, H: 20})
+	screen := uv.NewScreenBuffer(120, 20)
+	viewer.Draw(screen)
+	var rendered strings.Builder
+	for y := range 20 {
+		for x := range 120 {
+			if cell := screen.CellAt(x, y); cell != nil {
+				rendered.WriteString(cell.Content)
+			}
+		}
+		rendered.WriteByte('\n')
+	}
+	assert.Equal(t, status.Error, prod.state)
+	assert.Contains(t, rendered.String(), failure.Err.Error(), "zero-log viewer renders resolver failure")
 }
 
 func TestOnMemberAuthResolved_SkipsDeselected(t *testing.T) {

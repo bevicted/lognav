@@ -123,6 +123,41 @@ core:
 	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 }
 
+func TestConfigFromLayers_EnvironmentAPIKeyEnvVarDefaultsAndOverrides(t *testing.T) {
+	t.Parallel()
+
+	packageLayer := configLayer{name: "package defaults", bytes: []byte(`icl:
+  environments:
+    custom:
+      iamURL: https://iam.example/custom
+      apiKeyEnvVar: PACKAGE_API_KEY
+    defaulted:
+      iamURL: https://iam.example/defaulted
+`)}
+	systemLayer := configLayer{name: systemConfigName, bytes: []byte(`icl:
+  environments:
+    system:
+      iamURL: https://iam.example/system
+      apiKeyEnvVar: SYSTEM_API_KEY
+`)}
+	userLayer := configLayer{name: userConfigName, bytes: []byte(`icl:
+  environments:
+    custom:
+      apiKeyEnvVar: ""
+`)}
+
+	cfg, err := configFromLayers(packageLayer, systemLayer, userLayer)
+	require.NoError(t, err)
+	assert.Empty(t, cfg.ICL.Environments["custom"].APIKeyEnvVar, "explicit empty selector disables lookup")
+	assert.Equal(t, "IC_API_KEY", cfg.ICL.Environments["defaulted"].APIKeyEnvVar)
+	assert.Equal(t, "SYSTEM_API_KEY", cfg.ICL.Environments["system"].APIKeyEnvVar)
+	assert.Equal(t, "IC_API_KEY", cfg.ICL.Environments["bluemix"].APIKeyEnvVar)
+
+	cfg, err = configFromLayers(packageLayer, systemLayer)
+	require.NoError(t, err)
+	assert.Equal(t, "PACKAGE_API_KEY", cfg.ICL.Environments["custom"].APIKeyEnvVar, "removing an override restores the lower selector")
+}
+
 //nolint:paralleltest // changes XDG_CONFIG_HOME and PackageConfigPath.
 func TestLoadConfig_InstanceMergeUsesOneFinalPolicy(t *testing.T) {
 	// PackageConfigPath and XDG_CONFIG_HOME are process-global.

@@ -298,7 +298,12 @@ func runQueryWithOptions(ctx context.Context, stdout, stderr io.Writer, cfg *con
 	if options.tee {
 		tee = newQueryTeeEmitter(logEmitter(stdout), cancel)
 	}
-	manager := newQueryAccountManager(queryEnvironments(cfg))
+	manager := newQueryAccountManager(cfg.ICL.Environments)
+	for cname, environment := range cfg.ICL.Environments {
+		if key, ok := environment.APIKeyEnvOverride(os.Getenv); ok {
+			manager.SetAPIKey(icl.Environment(cname), key, environment.APIKeyEnvVar)
+		}
+	}
 	initialTokens, sessionPath, err := loadQuerySession(manager)
 	if err != nil {
 		fmt.Fprintln(stderr, "no snapshot created")
@@ -721,24 +726,6 @@ func queryMembersError(members []queryMember) error {
 		code = ExitUnavailable
 	}
 	return WithExit(code, errors.Join(causes...))
-}
-
-func apiKeyFromEnv(configKey string) string {
-	if key := os.Getenv("IC_API_KEY"); key != "" {
-		return key
-	}
-	return configKey
-}
-
-// queryEnvironments copies configured IAM records and applies the
-// production-only environment override without affecting other environments.
-func queryEnvironments(cfg *config.Config) map[string]config.ICLEnvironmentConfig {
-	environments := maps.Clone(cfg.ICL.Environments)
-	if production, ok := environments[string(icl.EnvProd)]; ok {
-		production.APIKey = apiKeyFromEnv(production.APIKey)
-		environments[string(icl.EnvProd)] = production
-	}
-	return environments
 }
 
 func loadQuerySession(manager *icl.AccountManager) (map[icl.Environment]string, string, error) {
